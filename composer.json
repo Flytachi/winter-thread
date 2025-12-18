@@ -11,20 +11,13 @@
     "bin": [
         "runner"
     ],
-    "autoload-dev": {
-        "psr-4": {
-            "Tests\\": "tests/"
-        }
-    },
     "require": {
-        "php": ">=8.3",
+        "php": ">=8.1",
         "opis/closure": "^4.4",
         "ext-pcntl": "*",
         "ext-posix": "*"
     },
     "require-dev": {
-        "flytachi/winter-base": "^1.0",
-        "monolog/monolog": "^3.0",
         "squizlabs/php_codesniffer": "@stable"
     },
     "authors": [

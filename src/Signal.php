@@ -1,6 +1,6 @@
 <?php
 
-namespace Flytachi\Kernel\Src\Thread;
+namespace Flytachi\Winter\Thread;
 
 final class Signal
 {
@@ -47,6 +47,21 @@ final class Signal
     }
 
     /**
+     * Sends a kill signal (SIGKILL) to a process.
+     * This is a forceful termination and cannot be caught or ignored.
+     *
+     * @param int $pid The process ID.
+     * @return bool True if the signal was sent, false otherwise.
+     */
+    public static function kill(int $pid): bool
+    {
+        if (self::isProcessRunning($pid)) {
+            return posix_kill($pid, SIGKILL);
+        }
+        return false;
+    }
+
+    /**
      * Waits for a process to terminate.
      *
      * @param int $pid The process ID to wait for.
@@ -60,7 +75,7 @@ final class Signal
             if (time() - $startTime > $timeout) {
                 return false;
             }
-            usleep(250_000); // 0.25 seconds
+            usleep(50_000); // 0.05 seconds
         }
         return true;
     }

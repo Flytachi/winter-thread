@@ -2,5 +2,6 @@
 
 namespace Flytachi\Winter\Thread;
 
-class ThreadException extends \RuntimeException {
+class ThreadException extends \RuntimeException
+{
 }

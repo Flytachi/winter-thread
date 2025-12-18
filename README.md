@@ -1,5 +1,9 @@
 # Winter Thread: A Modern Process Control Library for PHP
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/flytachi/winter-thread.svg)](https://packagist.org/packages/flytachi/winter-thread)
+[![PHP Version Require](https://img.shields.io/packagist/php-v/flytachi/winter-thread.svg?style=flat-square)](https://packagist.org/packages/flytachi/winter-thread)
+[![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
+
 **Winter Thread** provides a clean, object-oriented API for running and controlling background processes in PHP, simulating a traditional threading model for parallel and long-running tasks.
 
 It abstracts away the complexities of `proc_open` and `posix` signals into a powerful and easy-to-use interface.
