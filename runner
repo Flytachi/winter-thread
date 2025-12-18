@@ -3,24 +3,30 @@
 
 use Flytachi\Winter\Thread\Runnable;
 
-function findAndLoadAutoloader(string $currentDir): bool
-{
-    if (file_exists($currentDir . '/vendor/autoload.php')) {
-        require_once $currentDir . '/vendor/autoload.php';
-        return true;
-    }
-
-    if (dirname($currentDir) === $currentDir) {
-        return false;
-    }
-
-    return findAndLoadAutoloader(dirname($currentDir));
-}
-
-if (!findAndLoadAutoloader(__DIR__)) {
-    fwrite(STDERR, "FATAL ERROR: Could not find Composer's vendor/autoload.php. " .
-        "Please ensure that Composer dependencies are installed.\n");
-    exit(1);
+//function findAndLoadAutoloader(string $currentDir): bool
+//{
+//    if (file_exists($currentDir . '/vendor/autoload.php')) {
+//        require_once $currentDir . '/vendor/autoload.php';
+//        return true;
+//    }
+//
+//    if (dirname($currentDir) === $currentDir) {
+//        return false;
+//    }
+//
+//    return findAndLoadAutoloader(dirname($currentDir));
+//}
+//
+//if (!findAndLoadAutoloader(__DIR__)) {
+//    fwrite(STDERR, "FATAL ERROR: Could not find Composer's vendor/autoload.php. " .
+//        "Please ensure that Composer dependencies are installed.\n");
+//    exit(1);
+//}
+$fileAutoloader = dirname(__DIR__, 2) . '/autoload.php';
+if (file_exists($fileAutoloader)) {
+    require_once $fileAutoloader;
+} else {
+    require_once __DIR__ . '/vendor/autoload.php';
 }
 
 // 1. Reading all standard input data (stdin).

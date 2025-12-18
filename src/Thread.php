@@ -399,7 +399,7 @@ final class Thread
      */
     private function buildCommand(): string
     {
-        $php_executable = PHP_BINARY ?: 'php';
+        $phpExecutable = PHP_BINARY ?: 'php';
         $runnerScript = self::getRunnerScriptPath();
 
         $namespaceArg = '--namespace=' . escapeshellarg($this->namespace);
@@ -407,7 +407,7 @@ final class Thread
             : ('--tag=' . escapeshellarg($this->tag));
         $nameArg = '--name=' . escapeshellarg($this->name);
 
-        return "{$php_executable} {$runnerScript} {$namespaceArg} {$tagArg} {$nameArg}";
+        return "{$phpExecutable} {$runnerScript} {$namespaceArg} {$tagArg} {$nameArg}";
     }
 
     /**
