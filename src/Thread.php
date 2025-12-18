@@ -139,8 +139,12 @@ final class Thread
         $this->namespace = $namespace;
         $this->tag = $tag;
         if ($name === null) {
-            $className = get_class($runnable);
-            $this->name = substr($className, strrpos($className, '\\') + 1);
+            $reflection = new \ReflectionClass($runnable);
+            if ($reflection->isAnonymous()) {
+                $this->name = 'anonymous';
+            } else {
+                $this->name = $reflection->getShortName();
+            }
         } else {
             $this->name = $name;
         }
