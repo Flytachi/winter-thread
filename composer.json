@@ -1,0 +1,36 @@
+{
+    "name": "flytachi/winter-thread",
+    "description": "Winter framework Thread component",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Flytachi\\Winter\\Thread\\": "src/"
+        }
+    },
+    "bin": [
+        "runner"
+    ],
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": ">=8.3",
+        "opis/closure": "^4.4",
+        "ext-pcntl": "*",
+        "ext-posix": "*"
+    },
+    "require-dev": {
+        "flytachi/winter-base": "^1.0",
+        "monolog/monolog": "^3.0",
+        "squizlabs/php_codesniffer": "@stable"
+    },
+    "authors": [
+        {
+            "name": "Flytachi",
+            "email": "jasur.rakhmatov03@gmail.com"
+        }
+    ]
+}
