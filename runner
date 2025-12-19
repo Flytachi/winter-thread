@@ -3,6 +3,7 @@
 
 use Flytachi\Winter\Thread\Runnable;
 
+// initialization
 $fileAutoloader = dirname(__DIR__, 2) . '/autoload.php';
 if (file_exists($fileAutoloader)) {
     require_once $fileAutoloader;
