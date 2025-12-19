@@ -11,7 +11,27 @@ if (file_exists($fileAutoloader)) {
     require_once __DIR__ . '/vendor/autoload.php';
 }
 
-// 1. Reading all standard input data (stdin).
+
+// 1. Command line options (debugging, configure)
+$options = getopt('', ['namespace::', 'name::', 'tag::', 'debug']);
+
+// Debugging / Configure
+set_time_limit(0);
+ob_implicit_flush();
+ignore_user_abort(true);
+
+if (isset($options['debug'])) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+} else {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    ini_set('display_startup_errors', 0);
+}
+
+
+// 2. Reading all standard input data (stdin).
 $payload = stream_get_contents(STDIN);
 
 if (empty($payload)) {
@@ -19,7 +39,7 @@ if (empty($payload)) {
     exit(1);
 }
 
-// 2. Decode and deserialize the object Runnable.
+// 3. Decode and deserialize the object Runnable.
 if (function_exists('\Opis\Closure\serialize')) {
     $runnable = \Opis\Closure\unserialize(
         $payload,
@@ -28,16 +48,16 @@ if (function_exists('\Opis\Closure\serialize')) {
 } else {
     $runnable = unserialize($payload);
 }
+unset($payload);
 
 if (!$runnable instanceof Runnable) {
     fwrite(STDERR, "Error: The provided payload is not a valid RunnableInterface object.\n");
     exit(1);
 }
 
-// ----------
 
+// 4. Set the process title.
 if (function_exists('cli_set_process_title')) {
-    $options = getopt('', ['namespace::', 'name::', 'tag::']);
     $processNamespace = isset($options['namespace'])
         ? ($options['namespace'] . ' ') : '';
     $processTag = $options['tag'] ?? 'runnable';
@@ -51,9 +71,10 @@ if (function_exists('cli_set_process_title')) {
     }
 
     cli_set_process_title("WinterThread {$processNamespace}-> {$processName}@$processTag");
+    unset($processNamespace, $processTag, $processName);
 }
 
-// 3. Let's complete the task.
+// 5. Let's complete the task.
 try {
     $runnable->run();
     exit(0);

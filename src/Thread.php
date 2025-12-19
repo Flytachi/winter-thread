@@ -111,6 +111,11 @@ final class Thread
     private $processHandle = null;
 
     /**
+     * @var resource[]
+     */
+    private array $processPipes = [];
+
+    /**
      * The path to the runner script that executes the task.
      * Can be overridden via the bindRunner() static method.
      * @var string
@@ -197,18 +202,19 @@ final class Thread
      * and passes the serialized task to it via stdin. The child process then deserializes
      * the task and executes its run() method.
      *
-     * @param string|null $outputFile Optional. An absolute path to a file for redirecting the process's
-     *                                standard output (stdout) and standard error (stderr).
-     *                                If set, output will be appended to this file.
-     *                                If null, all output from the child process will be discarded.
-     *                                Default: null.
      *
+     * @param bool $debugMode Enable debug mode. In this mode, PHP errors from the child
+     *                                  process are reported.
+     * @param string|null $outputTarget The destination for the process's output.
+     *                                  - null: Output is piped to the parent process (readable via getOutput()).
+     *                                  - '/path/to/file.log': Output is appended to the specified file.
+     *                                  - '/dev/null': Output is discarded (only if debugMode is false).
      * @return int The Process ID (PID) of the newly created background process.
      *
      * @throws ThreadException If the process fails to start, for example, due to system
      *                         resource limits or incorrect permissions.
      */
-    public function start(?string $outputFile = null): int
+    public function start(bool $debugMode = false, ?string $outputTarget = null): int
     {
         if (function_exists('\Opis\Closure\serialize')) {
             $payload = \Opis\Closure\serialize(
@@ -221,29 +227,38 @@ final class Thread
 
         $descriptorSpec = [
             0 => ['pipe', 'r'], // stdin - pipe to write to
-            1 => ['pipe', 'w'], // stdout - pipe to read from
-            2 => ['pipe', 'w'], // stderr
         ];
 
-        if ($outputFile !== null) {
-            $descriptorSpec[1] = ['file', $outputFile, 'a']; // append
-            $descriptorSpec[2] = ['file', $outputFile, 'a']; // append
+        if ($outputTarget !== null) {
+            $descriptorSpec[1] = ['file', $outputTarget, 'a'];
+            $descriptorSpec[2] = ['file', $outputTarget, 'a'];
+        } else {
+            $descriptorSpec[1] = ['pipe', 'w']; // stdout - pipe to read from
+            $descriptorSpec[2] = ['pipe', 'w']; // stderr
         }
 
-        $command = $this->buildCommand();
+        $command = $this->buildCommand($debugMode);
 
-        $this->processHandle = proc_open($command, $descriptorSpec, $pipes);
+        $this->processHandle = proc_open($command, $descriptorSpec, $this->processPipes);
 
         if (!is_resource($this->processHandle)) {
             throw new ThreadException('Failed to start the process using proc_open.');
         }
 
-        fwrite($pipes[0], $payload);
-        fclose($pipes[0]);
+        fwrite($this->processPipes[0], $payload);
+        fclose($this->processPipes[0]);
+
+        // If we output to channels, set them to non-blocking mode.
+        if ($outputTarget === null) {
+            stream_set_blocking($this->processPipes[1], false);
+            stream_set_blocking($this->processPipes[2], false);
+        }
 
         $status = proc_get_status($this->processHandle);
         if (!$status || $status['running'] !== true) {
+            $this->closePipes();
             proc_close($this->processHandle);
+            $this->processHandle = null;
             throw new ThreadException('Process failed to start or terminated immediately.');
         }
 
@@ -287,7 +302,9 @@ final class Thread
     {
         if (!$this->isAlive()) {
             $status = proc_get_status($this->processHandle);
+            $this->closePipes();
             proc_close($this->processHandle);
+            $this->processHandle = null;
             return $status['exitcode'] ?? -1;
         }
 
@@ -300,8 +317,39 @@ final class Thread
         }
 
         $status = proc_get_status($this->processHandle);
+        $this->closePipes();
         proc_close($this->processHandle);
+        $this->processHandle = null;
+
         return $status['exitcode'];
+    }
+
+    /**
+     * Reads the standard output (STDOUT) from the process.
+     * This method only works if the thread was started with $outputTarget = null.
+     *
+     * @return string The content from STDOUT since the last read.
+     */
+    public function readOutput(): string
+    {
+        if (isset($this->processPipes[1])) {
+            return (string) stream_get_contents($this->processPipes[1]);
+        }
+        return '';
+    }
+
+    /**
+     * Reads the standard error (STDERR) from the process.
+     * This method only works if the thread was started with $outputTarget = null.
+     *
+     * @return string The content from STDERR since the last read.
+     */
+    public function readError(): string
+    {
+        if (isset($this->processPipes[2])) {
+            return (string) stream_get_contents($this->processPipes[2]);
+        }
+        return '';
     }
 
     /**
@@ -399,9 +447,12 @@ final class Thread
      * the path to the runner script, and all necessary command-line arguments
      * (namespace, name, and tag), ensuring they are properly escaped for security.
      *
+     * @param bool $debugMode Enable debug mode. In this mode, PHP errors from the child
+     *                                   process are reported.
+     *
      * @return string The fully constructed and escaped command string.
      */
-    private function buildCommand(): string
+    private function buildCommand(bool $debugMode): string
     {
         $phpExecutable = PHP_BINARY ?: 'php';
         $runnerScript = self::getRunnerScriptPath();
@@ -410,8 +461,22 @@ final class Thread
         $tagArg = $this->tag === null ? ''
             : ('--tag=' . escapeshellarg($this->tag));
         $nameArg = '--name=' . escapeshellarg($this->name);
+        $debugArg = $debugMode ? '--debug' : '';
 
-        return "{$phpExecutable} {$runnerScript} {$namespaceArg} {$tagArg} {$nameArg}";
+        return "{$phpExecutable} {$runnerScript} {$namespaceArg} {$tagArg} {$nameArg} {$debugArg}";
+    }
+
+    /**
+     * Closes any open process pipes.
+     */
+    private function closePipes(): void
+    {
+        foreach ($this->processPipes as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        $this->processPipes = [];
     }
 
     /**
@@ -454,7 +519,7 @@ final class Thread
     public static function getRunnerScriptPath(): string
     {
         if (!isset(self::$runnerScriptPath)) {
-            self::$runnerScriptPath = dirname(__DIR__) . '/runner';
+            self::$runnerScriptPath = dirname(__DIR__) . '/wExecutor';
         }
         return self::$runnerScriptPath;
     }
