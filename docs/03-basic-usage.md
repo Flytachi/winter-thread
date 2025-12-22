@@ -22,7 +22,7 @@ class ReportGenerator implements Runnable
         $this->reportId = $reportId;
     }
 
-    public function run(): void
+    public function run(array $args): void
     {
         // Initialize resources inside the run() method
         $db = new PDO('mysql:host=localhost;dbname=test', 'user', 'pass');

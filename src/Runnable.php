@@ -23,10 +23,14 @@ interface Runnable
     /**
      * The main entry point for the background task.
      *
-     * All the logic to be executed in the separate process must be placed within
-     * this method. If an uncaught exception is thrown from this method, it will
-     * be caught by the runner, logged to stderr, and the process will exit with
-     * a non-zero status code.
+     * All logic to be executed in the separate process must be placed within this method.
+     * The $args parameter will contain any custom arguments passed to the Thread::start() method.
+     *
+     * If an uncaught exception is thrown, it will be caught by the runner,
+     * logged to stderr, and the process will exit with a non-zero status code.
+     *
+     * @param array<string, string|bool> $args An associative array of custom arguments
+     *                                           parsed from the command line.
      */
-    public function run(): void;
+    public function run(array $args): void;
 }

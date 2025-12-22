@@ -123,7 +123,6 @@ final class Thread
     private static string $runnerScriptPath;
 
 
-
     /**
      * Constructs a new Thread instance.
      *
@@ -198,23 +197,27 @@ final class Thread
     /**
      * Starts the execution of the Runnable task in a new background process.
      *
-     * This method serializes the Runnable object, launches a new PHP process in the background,
-     * and passes the serialized task to it via stdin. The child process then deserializes
-     * the task and executes its run() method.
+     * This method serializes the Runnable object, launches a new PHP process,
+     * and passes the serialized task to it for execution. It offers flexible
+     * options for handling the output and passing custom arguments for each run.
      *
+     * @param array<string, scalar|null> $arguments Custom arguments for this specific run. These are passed
+     *                                              to the child process and can be read using getopt()
+     *                                              within the Runnable's run() method (prefixed with 'arg-').
+     * @param bool                       $debugMode If true, enables debug mode. PHP errors from the child
+     *                                              process are reported, and output is piped to the parent
+     *                                              for real-time reading.
+     * @param string|null                $outputTarget The destination for the process's standard output and error.
+     *                                              - `null` (default): Output is piped to the parent process,
+     *                                                allowing for real-time capture.
+     *                                              - `'/path/to/file.log'`: Output is appended to the specified file.
      *
-     * @param bool $debugMode Enable debug mode. In this mode, PHP errors from the child
-     *                                  process are reported.
-     * @param string|null $outputTarget The destination for the process's output.
-     *                                  - null: Output is piped to the parent process (readable via getOutput()).
-     *                                  - '/path/to/file.log': Output is appended to the specified file.
-     *                                  - '/dev/null': Output is discarded (only if debugMode is false).
      * @return int The Process ID (PID) of the newly created background process.
      *
      * @throws ThreadException If the process fails to start, for example, due to system
      *                         resource limits or incorrect permissions.
      */
-    public function start(bool $debugMode = false, ?string $outputTarget = null): int
+    public function start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = null): int
     {
         if (function_exists('\Opis\Closure\serialize')) {
             $payload = \Opis\Closure\serialize(
@@ -237,7 +240,7 @@ final class Thread
             $descriptorSpec[2] = ['pipe', 'w']; // stderr
         }
 
-        $command = $this->buildCommand($debugMode);
+        $command = $this->buildCommand($arguments, $debugMode);
 
         $this->processHandle = proc_open($command, $descriptorSpec, $this->processPipes);
 
@@ -443,27 +446,57 @@ final class Thread
     /**
      * Constructs the complete command-line string to execute the runner script.
      *
-     * This internal method assembles the command, including the PHP executable,
-     * the path to the runner script, and all necessary command-line arguments
-     * (namespace, name, and tag), ensuring they are properly escaped for security.
+     * This internal method assembles the full command, including:
+     * 1. The PHP executable path.
+     * 2. The path to the runner script.
+     * 3. System arguments for process identification (--namespace, --name, --tag).
+     * 4. The debug flag (--debug), if enabled.
+     * 5. Any custom user-provided arguments for the specific run (prefixed with --arg-).
      *
-     * @param bool $debugMode Enable debug mode. In this mode, PHP errors from the child
-     *                                   process are reported.
+     * All arguments are properly escaped to prevent shell injection vulnerabilities.
      *
-     * @return string The fully constructed and escaped command string.
+     * @param array<string, scalar|null> $arguments An associative array of custom arguments for this specific run.
+     *                                              Keys become argument names, and values become their values.
+     *                                              A value of `true` creates a valueless flag.
+     * @param bool                       $debugMode If true, the --debug flag is added, enabling
+     *                                              detailed error reporting in the child process.
+     *
+     * @return string The fully constructed and escaped command string, ready for execution.
      */
-    private function buildCommand(bool $debugMode): string
+    private function buildCommand(array $arguments, bool $debugMode): string
     {
         $phpExecutable = PHP_BINARY ?: 'php';
         $runnerScript = self::getRunnerScriptPath();
 
-        $namespaceArg = '--namespace=' . escapeshellarg($this->namespace);
-        $tagArg = $this->tag === null ? ''
-            : ('--tag=' . escapeshellarg($this->tag));
-        $nameArg = '--name=' . escapeshellarg($this->name);
-        $debugArg = $debugMode ? '--debug' : '';
+        // Base args
+        $baseArgs = [
+            '--namespace=' . escapeshellarg($this->namespace),
+            '--name=' . escapeshellarg($this->name),
+        ];
 
-        return "{$phpExecutable} {$runnerScript} {$namespaceArg} {$tagArg} {$nameArg} {$debugArg}";
+        if ($this->tag !== null) {
+            $baseArgs[] = '--tag=' . escapeshellarg($this->tag);
+        }
+        if ($debugMode) {
+            $baseArgs[] = '--debug';
+        }
+
+        // Custom args
+        $customArgs = [];
+        foreach ($arguments as $key => $value) {
+            if (!is_scalar($value) && !is_null($value)) {
+                continue;
+            }
+            if ($value === true) {
+                $customArgs[] = '--arg-' . escapeshellarg($key);
+            }
+            elseif ($value !== null && $value !== false) {
+                $customArgs[] = '--arg-' . escapeshellarg($key) . '=' . escapeshellarg((string)$value);
+            }
+        }
+
+        $allArgs = array_merge($baseArgs, $customArgs);
+        return "{$phpExecutable} {$runnerScript} " . implode(' ', array_filter($allArgs));
     }
 
     /**

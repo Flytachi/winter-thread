@@ -25,7 +25,7 @@ require 'vendor/autoload.php';
 
 $thread = new \Flytachi\Winter\Thread\Thread(
     new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(): void {
+        public function run(array $args): void {
             // This output will be completely ignored.
             echo "Processing a heavy task...";
             error_log("This will also be ignored.");
@@ -66,7 +66,7 @@ require 'vendor/autoload.php';
 
 $thread = new \Flytachi\Winter\Thread\Thread(
     new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(): void {
+        public function run(array $args): void {
             echo "Task started at: " . date('Y-m-d H:i:s') . PHP_EOL;
             echo "Performing calculations..." . PHP_EOL;
             // This will trigger a warning
@@ -120,7 +120,7 @@ require 'vendor/autoload.php';
 
 $thread = new \Flytachi\Winter\Thread\Thread(
     new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(): void {
+        public function run(array $args): void {
             for ($i = 1; $i <= 3; $i++) {
                 echo "Processing item {$i}..." . PHP_EOL;
                 sleep(1);
