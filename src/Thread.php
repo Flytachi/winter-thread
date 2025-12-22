@@ -489,8 +489,7 @@ final class Thread
             }
             if ($value === true) {
                 $customArgs[] = '--arg-' . escapeshellarg($key);
-            }
-            elseif ($value !== null && $value !== false) {
+            } elseif ($value !== null && $value !== false) {
                 $customArgs[] = '--arg-' . escapeshellarg($key) . '=' . escapeshellarg((string)$value);
             }
         }
