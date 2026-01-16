@@ -51,7 +51,7 @@ class VideoProcessingTask implements Runnable {
         $this->videoFile = $videoFile;
     }
 
-    public function run(): void {
+    public function run(array $args): void {
         echo "Child Process (PID: " . getmypid() . "): Starting processing for {$this->videoFile}...\n";
         sleep(10); // Simulate a long-running encoding job
         echo "Child Process (PID: " . getmypid() . "): Finished processing {$this->videoFile}.\n";

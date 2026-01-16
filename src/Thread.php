@@ -303,28 +303,28 @@ final class Thread
      */
     public function join(int $timeout = 0): ?int
     {
-        if (!$this->isAlive()) {
-            $status = proc_get_status($this->processHandle);
-            $this->closePipes();
-            proc_close($this->processHandle);
-            $this->processHandle = null;
-            return $status['exitcode'] ?? -1;
+        if (!is_resource($this->processHandle)) {
+            return -1;
         }
 
         $startTime = time();
-        while ($this->isAlive()) {
+
+        while (true) {
+            $status = proc_get_status($this->processHandle);
+
+            if (!$status['running']) {
+                $this->closePipes();
+                proc_close($this->processHandle);
+                $this->processHandle = null;
+                return $status['exitcode'];
+            }
+
             if ($timeout > 0 && (time() - $startTime) >= $timeout) {
                 return null;
             }
+
             usleep(50_000); // 0.05 seconds
         }
-
-        $status = proc_get_status($this->processHandle);
-        $this->closePipes();
-        proc_close($this->processHandle);
-        $this->processHandle = null;
-
-        return $status['exitcode'];
     }
 
     /**

@@ -2,6 +2,26 @@
 
 namespace Flytachi\Winter\Thread;
 
+/**
+ * Utility class for sending POSIX signals to processes by PID.
+ *
+ * Provides static methods for common process control operations such as
+ * interrupting, terminating, and killing processes, as well as waiting
+ * for process termination.
+ *
+ * WARNING: PID Reuse Limitation
+ * This class works with raw PIDs without process handle validation.
+ * Due to PID reuse by the OS, a PID may be reassigned to a different process
+ * after the original process terminates. This means:
+ * - `isProcessRunning($pid)` may return true for a completely different process
+ * - Signal methods may affect an unrelated process
+ *
+ * For safer process management, use the {@see Thread} class which validates
+ * processes via handles. Use this class only with "fresh" PIDs obtained
+ * immediately before the call.
+ *
+ * @package Flytachi\Winter\Thread
+ */
 final class Signal
 {
     /**
@@ -128,10 +148,15 @@ final class Signal
     }
 
     /**
-     * Checks if a process is currently running.
+     * Checks if a process with the given PID exists.
+     *
+     * Note: This method only verifies that a process with this PID exists and is
+     * accessible. Due to PID reuse, this may be a different process than the one
+     * originally associated with this PID. For reliable process tracking, use
+     * the {@see Thread} class instead.
      *
      * @param int $pid The process ID.
-     * @return bool True if the process is running, false otherwise.
+     * @return bool True if a process with this PID exists, false otherwise.
      */
     public static function isProcessRunning(int $pid): bool
     {
