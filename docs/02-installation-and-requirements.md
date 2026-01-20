@@ -22,23 +22,42 @@ To execute anonymous classes or `Closure` objects in a background thread, you ne
 composer require opis/closure
 ```
 
-When using opis/closure, you must also define a secret key. 
-This key is used to sign the serialized closure, preventing remote code execution vulnerabilities. 
-Define it once at the beginning of your application's lifecycle.
-
-```php
-define('WINTER_THREAD_SECRET', 'your-secret-key');
-```
-
-## Project Structure
-The library assumes a standard Composer project layout. 
-The internal runner script is located in the library's root directory and is automatically found.
-If you need to customize the path to the runner script (for example, for deep framework integration), 
-you can use the Thread::bindRunner() method:
+When using opis/closure, you must also define a secret key.
+This key is used to sign the serialized closure, preventing remote code execution vulnerabilities.
+Define it once at the beginning of your application's lifecycle using `Thread::bindSerSecurity()`:
 
 ```php
 use Flytachi\Winter\Thread\Thread;
 
-// Call this once during your application's bootstrap phase.
+Thread::bindSerSecurity('your-secret-key');
+```
+
+## Configuration
+
+The library provides several static methods for configuration.
+Call these once during your application's bootstrap phase.
+
+### Custom Runner Script
+
+The internal runner script is located in the library's root directory and is automatically found.
+If you need to customize the path to the runner script (for example, for deep framework integration),
+you can use `Thread::bindRunner()`:
+
+```php
+use Flytachi\Winter\Thread\Thread;
+
 Thread::bindRunner('/path/to/your/custom/runner');
+```
+
+### Custom PHP Binary Path
+
+When running under PHP-FPM, CGI, or other web SAPIs, `PHP_BINARY` returns the path
+to the web handler (e.g., `/usr/sbin/php-fpm83`), not the CLI binary needed
+for spawning background processes. If you need to explicitly specify the PHP CLI binary path,
+use `Thread::bindBinaryPath()`:
+
+```php
+use Flytachi\Winter\Thread\Thread;
+
+Thread::bindBinaryPath('/usr/bin/php');
 ```

@@ -42,7 +42,7 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * ```
  * php
  * // This requires the 'opis/closure' package to be installed.
- * define('WINTER_THREAD_SECRET', 'your-secret-key');
+ * Thread::bindSerSecurity('your-secret-key');
  *
  * $thread = new Thread(new class implements Runnable {
  *     public function run(): void {
@@ -121,6 +121,9 @@ final class Thread
      * @var string
      */
     private static string $runnerScriptPath;
+
+    private static ?string $serSecurityKey = null;
+    private static ?string $binaryPath = null;
 
 
     /**
@@ -465,7 +468,7 @@ final class Thread
      */
     private function buildCommand(array $arguments, bool $debugMode): string
     {
-        $phpExecutable = PHP_BINARY ?: 'php';
+        $phpExecutable = self::getPhpBinaryPath();
         $runnerScript = self::getRunnerScriptPath();
 
         // Base args
@@ -515,25 +518,25 @@ final class Thread
      * Creates a security provider for Opis/Closure serialization.
      *
      * This method allows for signed serialization, which prevents the execution of
-     * untrusted code. To enable this feature, define the `WINTER_THREAD_SECRET`
-     * constant with a long, secret, and unique string before starting any threads.
+     * untrusted code. To enable this feature, use `Thread::bindSerSecurity()`
+     * with a long, secret, and unique string before starting any threads.
      *
      * Example:
      * ```
      * php
-     * define('WINTER_THREAD_SECRET', 'your-super-secret-key-here'); // string
+     * Thread::bindSerSecurity('your-super-secret-key-here');
      * $thread = new Thread(new MyTask());
      * $thread->start();
      * ```
      *
-     * @return DefaultSecurityProvider|null A configured security provider if the constant is defined,
+     * @return DefaultSecurityProvider|null A configured security provider if set via bindSerSecurity(),
      *                                      otherwise null.
      */
     public static function getSerSecurity(): ?DefaultSecurityProvider
     {
-        if (defined('WINTER_THREAD_SECRET')) {
+        if (self::$serSecurityKey !== null) {
             return new DefaultSecurityProvider(
-                secret: (string) WINTER_THREAD_SECRET
+                secret: (string) self::$serSecurityKey
             );
         }
         return null;
@@ -568,5 +571,58 @@ final class Thread
     public static function bindRunner(string $runnerScriptPath): void
     {
         self::$runnerScriptPath = $runnerScriptPath;
+    }
+
+    /**
+     * Sets the secret key for secure closure serialization via Opis/Closure.
+     *
+     * This method should be called once at the beginning of your application's bootstrap
+     * process when using anonymous classes or closures as Runnable tasks.
+     *
+     * @param string $serSecurityKey A long, secret, and unique string used to sign serialized closures.
+     */
+    public static function bindSerSecurity(string $serSecurityKey): void
+    {
+        self::$serSecurityKey = $serSecurityKey;
+    }
+
+    /**
+     * Sets a custom path to the PHP CLI binary.
+     *
+     * When running under PHP-FPM, CGI, or other web SAPIs, PHP_BINARY returns the path
+     * to the web handler (e.g., /usr/sbin/php-fpm83), not the CLI binary needed
+     * for spawning background processes. Use this method to explicitly specify
+     * the correct PHP CLI executable path.
+     *
+     * @param string $binaryPath The absolute path to the PHP CLI binary (e.g., '/usr/bin/php').
+     */
+    public static function bindBinaryPath(string $binaryPath): void
+    {
+        self::$binaryPath = $binaryPath;
+    }
+
+    /**
+     * Gets the path to the PHP CLI binary.
+     *
+     * When running under PHP-FPM, CGI, or other web SAPIs, PHP_BINARY returns the path
+     * to the web handler (e.g., /usr/sbin/php-fpm83), not the CLI binary needed
+     * for spawning background processes. This method detects such cases and attempts
+     * to find the correct PHP CLI executable.
+     *
+     * @return string The path to the PHP CLI binary.
+     */
+    private static function getPhpBinaryPath(): string
+    {
+        if (self::$binaryPath !== null) {
+            return self::$binaryPath;
+        }
+
+        $binary = PHP_BINARY;
+        // If running in CLI, use PHP_BINARY directly
+        if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server') {
+            return $binary ?: 'php';
+        }
+
+        return 'php';
     }
 }
