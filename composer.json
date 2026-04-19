@@ -3,19 +3,34 @@
     "description": "Winter framework Thread component",
     "type": "library",
     "license": "MIT",
+    "homepage": "https://winterframe.net",
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-detail": "vendor/bin/phpunit --testdox"
+    },
+    "support": {
+        "source": "https://github.com/flytachi/winter-thread",
+        "docs": "https://winterframe.net/docs/threads"
+    },
     "autoload": {
         "psr-4": {
             "Flytachi\\Winter\\Thread\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Flytachi\\Winter\\Thread\\Tests\\": "tests/"
+        }
+    },
     "bin": ["wExecutor"],
     "require": {
         "php": ">=8.1",
-        "opis/closure": "^4.4",
         "ext-pcntl": "*",
-        "ext-posix": "*"
+        "ext-posix": "*",
+        "opis/closure": "^4.5"
     },
     "require-dev": {
+        "phpunit/phpunit": "@stable",
         "squizlabs/php_codesniffer": "@stable"
     },
     "authors": [

@@ -18,17 +18,16 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * ---
  * ### Example 1: Using a dedicated class
  *
- * ```
- * php
+ * ```php
  * class MyTask implements Runnable {
- *     public function run(): void {
+ *     public function run(array $args): void {
  *         // Long-running task, e.g., video processing
  *         sleep(10);
  *     }
  * }
  *
  * $thread = new Thread(new MyTask(), 'Processing', 'VideoTask', 'job-123');
- * $pid = $thread->start();
+ * $pid = $thread->start(); // output goes to /dev/null by default (safe for fire-and-forget)
  * echo "Task started with PID: $pid\n";
  *
  * // Wait for the task to complete
@@ -39,18 +38,17 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * ---
  * ### Example 2: Using an anonymous class (if Opis/Closure is installed)
  *
- * ```
- * php
+ * ```php
  * // This requires the 'opis/closure' package to be installed.
  * Thread::bindSerSecurity('your-secret-key');
  *
  * $thread = new Thread(new class implements Runnable {
- *     public function run(): void {
+ *     public function run(array $args): void {
  *         file_put_contents('output.log', 'Email batch sent at ' . date('Y-m-d H:i:s'));
  *     }
  * });
  *
- * $thread->start();
+ * $thread->start(); // fire-and-forget: safe by default, output discarded
  * // The main script can continue without waiting
  * ```
  * ---
@@ -211,8 +209,11 @@ final class Thread
      *                                              process are reported, and output is piped to the parent
      *                                              for real-time reading.
      * @param string|null                $outputTarget The destination for the process's standard output and error.
-     *                                              - `null` (default): Output is piped to the parent process,
-     *                                                allowing for real-time capture.
+     *                                              - `'/dev/null'` (default): Output is discarded. Safe for
+     *                                                fire-and-forget background tasks where the parent does not
+     *                                                read output. Prevents Broken pipe errors.
+     *                                              - `null`: Output is piped to the parent process. Use only
+     *                                                when the parent actively reads via readOutput()/readError().
      *                                              - `'/path/to/file.log'`: Output is appended to the specified file.
      *
      * @return int The Process ID (PID) of the newly created background process.
@@ -220,7 +221,7 @@ final class Thread
      * @throws ThreadException If the process fails to start, for example, due to system
      *                         resource limits or incorrect permissions.
      */
-    public function start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = null): int
+    public function start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = '/dev/null'): int
     {
         if (function_exists('\Opis\Closure\serialize')) {
             $payload = \Opis\Closure\serialize(

@@ -148,19 +148,35 @@ final class Signal
     }
 
     /**
-     * Checks if a process with the given PID exists.
+     * Checks if a process with the given PID is actively running.
      *
-     * Note: This method only verifies that a process with this PID exists and is
-     * accessible. Due to PID reuse, this may be a different process than the one
-     * originally associated with this PID. For reliable process tracking, use
-     * the {@see Thread} class instead.
+     * Returns false for zombie processes (state Z): they have already exited but have
+     * not yet been reaped by their parent. A zombie cannot perform any work and should
+     * be considered terminated for signaling and waiting purposes.
+     *
+     * Note: Due to OS PID reuse, a PID may be reassigned to a different process after
+     * the original one terminates. For reliable process tracking use the {@see Thread}
+     * class instead. Use this method only with freshly obtained PIDs.
      *
      * @param int $pid The process ID.
-     * @return bool True if a process with this PID exists, false otherwise.
+     * @return bool True if a live (non-zombie) process with this PID exists, false otherwise.
      */
     public static function isProcessRunning(int $pid): bool
     {
-        // posix_kill with signal 0 is a standard way to check for process existence
-        return posix_kill($pid, 0);
+        if (!posix_kill($pid, 0)) {
+            return false;
+        }
+        // On Linux, /proc/<pid>/status exposes the process state.
+        // A zombie (State: Z) has already exited — treat it as not running.
+        if (PHP_OS_FAMILY === 'Linux') {
+            $statusFile = "/proc/$pid/status";
+            if (is_readable($statusFile)) {
+                $contents = file_get_contents($statusFile);
+                if ($contents !== false && preg_match('/^State:\s+Z/m', $contents)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 }

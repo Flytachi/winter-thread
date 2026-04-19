@@ -1,12 +1,16 @@
 # 3. Basic Usage
 
-The core workflow of Winter Thread involves creating a task, wrapping it in a `Thread` object, and starting it.
+The core workflow of Winter Thread: define a task, wrap it in a `Thread`, start it.
+
+---
 
 ## Step 1: Create a Runnable Task
 
-First, create a class that implements the `Runnable` interface. The entire logic of your background task must be contained within the `run()` method.
+Implement the `Runnable` interface. All task logic goes inside `run()`.
 
-**Important**: The `Runnable` object will be serialized and passed to another process. Therefore, it cannot contain non-serializable properties like database connections, file handles, or other resources. All such resources must be initialized inside the `run()` method.
+**Critical constraint:** the `Runnable` object is serialized and passed to the child process
+via stdin. Properties must not contain non-serializable values such as database connections,
+file handles, or sockets. Create those resources *inside* `run()`.
 
 ```php
 <?php
@@ -15,39 +19,34 @@ use Flytachi\Winter\Thread\Runnable;
 
 class ReportGenerator implements Runnable
 {
-    private int $reportId;
-
-    public function __construct(int $reportId)
-    {
-        $this->reportId = $reportId;
-    }
+    public function __construct(private int $reportId) {}
 
     public function run(array $args): void
     {
-        // Initialize resources inside the run() method
-        $db = new PDO('mysql:host=localhost;dbname=test', 'user', 'pass');
+        // Initialize resources here, not in the constructor
+        $db = new PDO('mysql:host=localhost;dbname=mydb', 'user', 'pass');
 
-        echo "Generating report #{$this->reportId}...\n";
-        $reportData = $db->query("SELECT ... WHERE id = {$this->reportId}")->fetchAll();
-
-        // Simulate a long-running task
-        sleep(15);
+        $rows = $db->query("SELECT * FROM orders WHERE report_id = {$this->reportId}")
+                   ->fetchAll();
 
         file_put_contents(
-            "report-{$this->reportId}.json",
-            json_encode($reportData)
+            "/tmp/report-{$this->reportId}.json",
+            json_encode($rows)
         );
-
-        echo "Report #{$this->reportId} generated.\n";
     }
 }
 ```
 
-## Step 2: Create and Start the Thread
+---
 
-Now, in your main application script, create an instance of your task and pass it to the Thread constructor.
-The start() method launches the process in the background and immediately returns its Process ID (PID), 
-allowing your main script to continue its execution without waiting.
+## Step 2: Start the Thread
+
+Create a `Thread` with your task and call `start()`. The method returns immediately with
+the child process PID — your main script is never blocked.
+
+By default, output from the child goes to `/dev/null`. This is the safest option for
+background jobs: no pipe is opened, so no **Broken pipe** risk regardless of how long the
+job runs or whether the parent stays alive.
 
 ```php
 <?php
@@ -56,47 +55,135 @@ require 'vendor/autoload.php';
 
 use Flytachi\Winter\Thread\Thread;
 
-$task = new ReportGenerator(42);
-$thread = new Thread($task);
+$thread = new Thread(
+    new ReportGenerator(42),
+    'Billing',        // namespace  — appears in `ps` output
+    'ReportGenerator', // name
+    'report-42'       // tag
+);
 
-$pid = $thread->start();
+$pid = $thread->start(); // non-blocking; output goes to /dev/null by default
+echo "Report generation started in background (PID: $pid)\n";
 
-echo "Main Script: Report generation for #42 has been started in the background (PID: $pid).\n";
-echo "Main Script: Now doing other important work...\n";
-
-// The main script is not blocked and can perform other operations.
+// Main script continues immediately
+doOtherWork();
 ```
+
+---
 
 ## Step 3: Wait for Completion (Optional)
 
-If you need to wait for the background task to finish, use the join() method. This will block 
-your main script's execution until the child process terminates.
-
-The join() method returns the exit code of the child process (typically 0 for success).
+If you need the result before continuing, call `join()`. It blocks until the child exits
+and returns the exit code (`0` = success, non-zero = failure).
 
 ```php
-// ... continuing from the previous example
-
-// After doing other work, we now need to wait for the report.
-echo "Main Script: Waiting for the report to be finalized...\n";
-
 $exitCode = $thread->join();
 
 if ($exitCode === 0) {
-    echo "Main Script: Background task completed successfully.\n";
+    echo "Report ready.\n";
 } else {
-    echo "Main Script: Background task failed with exit code: $exitCode.\n";
+    echo "Report failed (exit code: $exitCode).\n";
 }
 ```
-You can also provide a timeout to join() to prevent waiting indefinitely:
+
+To avoid waiting indefinitely, pass a timeout in seconds:
 
 ```php
-// Wait for a maximum of 30 seconds
-$exitCode = $thread->join(30);
+$exitCode = $thread->join(timeout: 30);
 
 if ($exitCode === null) {
-    echo "Main Script: Timeout reached! The task is still running.\n";
-    // You might want to terminate it forcefully
+    echo "Timed out — task is still running.\n";
+    $thread->kill(); // force-stop if needed
+}
+```
+
+---
+
+## Step 4: Pass Custom Arguments (Optional)
+
+Pass an associative array to `start()`. Arguments become available in `run()` via `$args`.
+
+Rules:
+- `'key' => 'value'` → `$args['key'] === 'value'`
+- `'flag' => true` → `$args['flag'] === true` (valueless flag)
+- `'skip' => false` or `'skip' => null` → not included in `$args`
+
+```php
+class ExportTask implements Runnable
+{
+    public function run(array $args): void
+    {
+        $format  = $args['format']  ?? 'csv';
+        $dryRun  = isset($args['dry-run']);
+        $userId  = $args['user-id'] ?? null;
+
+        echo "Exporting as $format" . ($dryRun ? ' (dry run)' : '') . "\n";
+    }
+}
+
+$thread = new Thread(new ExportTask());
+$thread->start([
+    'format'  => 'json',
+    'user-id' => '42',
+    'dry-run' => true,
+]);
+$thread->join();
+```
+
+---
+
+## Step 5: Log Output to a File (Optional)
+
+For tasks that produce output you want to keep, pass a file path as `$outputTarget`.
+Output is appended — safe to reuse the same file across multiple jobs.
+
+```php
+$thread->start(
+    debugMode:    true,              // enable PHP error reporting in child
+    outputTarget: '/var/log/app/reports.log'
+);
+```
+
+See [4. Debugging and Output Handling](04-debugging-and-output.md) for all output modes.
+
+---
+
+## Full Example
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+use Flytachi\Winter\Thread\Runnable;
+use Flytachi\Winter\Thread\Thread;
+
+class VideoProcessor implements Runnable
+{
+    public function __construct(private string $file) {}
+
+    public function run(array $args): void
+    {
+        $quality = $args['quality'] ?? 'high';
+        // ... encoding logic
+        file_put_contents("/tmp/{$this->file}.done", "quality=$quality");
+    }
+}
+
+$thread = new Thread(new VideoProcessor('movie.mp4'), 'Media', 'VideoProcessor', 'job-7');
+$pid    = $thread->start(['quality' => 'hd'], outputTarget: '/var/log/app/video.log');
+
+echo "Encoding started (PID: $pid). Doing other work...\n";
+sleep(2);
+
+$exitCode = $thread->join(timeout: 60);
+
+if ($exitCode === null) {
+    echo "Encoding is taking too long, killing...\n";
     $thread->kill();
+} elseif ($exitCode === 0) {
+    echo "Encoding complete.\n";
+} else {
+    echo "Encoding failed (code: $exitCode). Check /var/log/app/video.log\n";
 }
 ```

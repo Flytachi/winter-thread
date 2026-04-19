@@ -1,177 +1,172 @@
 # 4. Debugging and Output Handling
 
-`Winter-Thread` provides a powerful and flexible system for handling the output of your background processes, making debugging intuitive and straightforward. The behavior is controlled by the two arguments passed to the `start()` method: `$debugMode` and `$outputTarget`.
+`Winter Thread` provides a flexible system for handling output from background processes.
+The behavior is controlled by two parameters of `start()`: `$debugMode` and `$outputTarget`.
 
-There are three primary debugging strategies you can use.
-
----
-
-### Strategy 1: Silent Mode (Fire and Forget)
-
-This is the default mode, ideal for production environments where you only care about the task's completion, not its output.
-
--   **`start(false, null)`**
--   **`$debugMode`**: `false` (PHP errors are suppressed).
--   **`$outputTarget`**: `null` (Output is piped but immediately discarded by the parent).
-
-This mode is optimized for performance and silence. The child process runs completely detached, and its output does not consume resources.
-
-**Example:**
-
-```php
-<?php
-// main_script.php
-require 'vendor/autoload.php';
-
-$thread = new \Flytachi\Winter\Thread\Thread(
-    new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(array $args): void {
-            // This output will be completely ignored.
-            echo "Processing a heavy task...";
-            error_log("This will also be ignored.");
-        }
-    }
-);
-
-$pid = $thread->start(false, null); // Or just $thread->start();
-echo "Started silent background process with PID: $pid\n";
-// The main script can now exit.
-```
-
-**Expected Output:**
-
-```
-Started silent background process with PID: 12345
-```
-*(Nothing else will be displayed. The child process output is discarded.)*
+> **Why `/dev/null` is the default**
+>
+> When a parent process opens a pipe (`$outputTarget = null`) but never reads from it,
+> the OS buffer (~64 KB) fills up, the child process blocks on `write()`, and eventually
+> receives a **Broken pipe** error. This silently kills background jobs.
+>
+> The default `$outputTarget = '/dev/null'` prevents this entirely: output is discarded
+> by the OS without buffering, and the parent needs no lifecycle management of the process.
+> Pass `null` explicitly only when you actively read output via `readOutput()` / `readError()`.
 
 ---
 
-### Strategy 2: Logging to a File
+## Strategy 1: Fire and Forget (default)
 
-This is the most common method for debugging in staging or production. All output, including `echo`, `var_dump`, and any PHP errors, is appended to a specified log file.
+The safest mode for production background jobs. Output is discarded. No pipe is opened,
+so the parent process can start a task and immediately release the `Thread` object.
 
--   **`start(true, '/path/to/your.log')`**
--   **`$debugMode`**: `true` (PHP errors are enabled and reported).
--   **`$outputTarget`**: A file path string.
-
-**Example:**
-
-Let's create a task that produces both standard output and a PHP warning.
+- **`start()`** — equivalent to `start([], false, '/dev/null')`
+- **`$debugMode`**: `false` — PHP errors suppressed in the child.
+- **`$outputTarget`**: `'/dev/null'` — output discarded by the OS.
 
 ```php
 <?php
-// main_script.php
 require 'vendor/autoload.php';
 
-$thread = new \Flytachi\Winter\Thread\Thread(
-    new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(array $args): void {
-            echo "Task started at: " . date('Y-m-d H:i:s') . PHP_EOL;
-            echo "Performing calculations..." . PHP_EOL;
-            // This will trigger a warning
-            $result = 10 / 0;
-        }
+use Flytachi\Winter\Thread\Runnable;
+use Flytachi\Winter\Thread\Thread;
+
+$thread = new Thread(new class implements Runnable {
+    public function run(array $args): void {
+        // Heavy task — output is discarded by default
+        file_put_contents('/tmp/result.json', json_encode(['done' => true]));
     }
-);
+});
 
-$logFile = __DIR__ . '/debug.log';
-$pid = $thread->start(true, $logFile);
-
-echo "Started process PID: $pid. Output is being logged to {$logFile}\n";
+$pid = $thread->start(); // safe fire-and-forget
+echo "Started background process PID: $pid\n";
+// Thread object can be released here; no Broken pipe risk
 ```
 
-**How to Check the Logs:**
+---
 
-Open your terminal and use `cat` or `tail` to view the log file.
+## Strategy 2: Log to File
+
+The recommended approach for staging and production when you need a record of what
+happened. All output (`echo`, `var_dump`, PHP errors) is appended to the specified file.
+
+- **`start(true, '/path/to/file.log')`**
+- **`$debugMode`**: `true` — PHP errors enabled and visible in the log.
+- **`$outputTarget`**: a file path string — output appended to the file.
+
+```php
+<?php
+require 'vendor/autoload.php';
+
+use Flytachi\Winter\Thread\Runnable;
+use Flytachi\Winter\Thread\Thread;
+
+$thread = new Thread(new class implements Runnable {
+    public function run(array $args): void {
+        echo "Task started at: " . date('Y-m-d H:i:s') . PHP_EOL;
+        echo "Processing..." . PHP_EOL;
+        // A warning — visible in the log because debugMode is true
+        $result = 10 / 0;
+    }
+});
+
+$logFile = __DIR__ . '/worker.log';
+$pid = $thread->start(debugMode: true, outputTarget: $logFile);
+echo "PID: $pid — logging to {$logFile}\n";
+```
+
+**Reading the log:**
 
 ```bash
-# Wait a moment for the process to run, then:
-cat debug.log
+tail -f worker.log
 ```
 
-**Expected Content of `debug.log`:**
+**Expected content:**
 
 ```
 Task started at: 2025-12-19 10:30:00
-Performing calculations...
-
-Warning: Division by zero in /path/to/your/main_script.php on line XX
+Processing...
+Warning: Division by zero in ... on line XX
 ```
 
 ---
 
-### Strategy 3: Interactive Debugging (Live Output)
+## Strategy 3: Interactive / Pipe Mode
 
-This is the most powerful mode for local development. It allows the parent process to read the child's output in real-time as it's being generated.
+For local development and debugging. The parent reads the child's output in real time.
+You **must** pass `null` explicitly and **must** actively poll `readOutput()` / `readError()`
+while the process is alive — otherwise the pipe buffer fills and causes a Broken pipe.
 
--   **`start(true, null)`**
--   **`$debugMode`**: `true` (PHP errors are enabled).
--   **`$outputTarget`**: `null` (Output is piped to the parent process).
-
-To make this work, the parent script must actively poll the `Thread` object for new output while the process is alive.
-
-**Example:**
+- **`start(true, null)`**
+- **`$debugMode`**: `true` — PHP errors enabled.
+- **`$outputTarget`**: `null` — output piped to the parent process.
 
 ```php
 <?php
-// main_script.php
 require 'vendor/autoload.php';
 
-$thread = new \Flytachi\Winter\Thread\Thread(
-    new class implements \Flytachi\Winter\Thread\Runnable {
-        public function run(array $args): void {
-            for ($i = 1; $i <= 3; $i++) {
-                echo "Processing item {$i}..." . PHP_EOL;
-                sleep(1);
-            }
-            // Trigger an error
-            trigger_error("A custom error occurred", E_USER_WARNING);
+use Flytachi\Winter\Thread\Runnable;
+use Flytachi\Winter\Thread\Thread;
+
+$thread = new Thread(new class implements Runnable {
+    public function run(array $args): void {
+        for ($i = 1; $i <= 3; $i++) {
+            echo "Step {$i}..." . PHP_EOL;
+            sleep(1);
         }
+        trigger_error("Custom warning for demo", E_USER_WARNING);
     }
-);
+});
 
-$pid = $thread->start(true, null);
-echo "Started interactive debug session for PID: $pid\n\n";
+$pid = $thread->start(debugMode: true, outputTarget: null);
+echo "Interactive session started, PID: $pid\n\n";
 
-// Poll for output while the thread is alive
+// IMPORTANT: actively drain the pipe while the process runs
 while ($thread->isAlive()) {
-    $output = $thread->readOutput();
-    if (!empty($output)) {
-        echo "[STDOUT] " . rtrim($output) . "\n";
+    $out = $thread->readOutput();
+    if ($out !== '') {
+        echo '[STDOUT] ' . rtrim($out) . "\n";
     }
-
-    $error = $thread->readError();
-    if (!empty($error)) {
-        echo "[STDERR] " . rtrim($error) . "\n";
+    $err = $thread->readError();
+    if ($err !== '') {
+        echo '[STDERR] ' . rtrim($err) . "\n";
     }
-    usleep(250000); // Poll every 0.25 seconds
+    usleep(250_000);
 }
 
-// Read any final output after the process has finished
-$finalError = $thread->readError();
-if (!empty($finalError)) {
-    echo "[STDERR] " . rtrim($finalError) . "\n";
+// Drain remaining output after process exits
+$out = $thread->readOutput();
+if ($out !== '') {
+    echo '[STDOUT] ' . rtrim($out) . "\n";
+}
+$err = $thread->readError();
+if ($err !== '') {
+    echo '[STDERR] ' . rtrim($err) . "\n";
 }
 
 $exitCode = $thread->join();
 echo "\nProcess $pid finished with exit code: $exitCode\n";
 ```
 
-**Expected Output (will appear gradually):**
+**Expected output (appearing gradually):**
 
 ```
-Started interactive debug session for PID: 12345
+Interactive session started, PID: 12345
 
-(approx. 1 second later)
-[STDOUT]: # "Processing item 1..."
-
-(approx. 1 second later)
-[STDOUT]: # "Processing item 2..."
-
-(approx. 1 second later)
-[STDOUT]: # "Processing item 3..."
-[STDERR]: # "Warning: A custom error occurred in /path/to/your/main_script.php on line XX"
+[STDOUT] Step 1...
+[STDOUT] Step 2...
+[STDOUT] Step 3...
+[STDERR] Warning: Custom warning for demo in ... on line XX
 
 Process 12345 finished with exit code: 0
 ```
+
+---
+
+## Summary
+
+| Mode                   | `$outputTarget`   | `$debugMode` | Use case                              |
+|------------------------|-------------------|--------------|---------------------------------------|
+| Fire and forget        | `'/dev/null'` (default) | `false` | Production background jobs            |
+| Log to file            | `'/path/file.log'`| `true`       | Staging / production with audit trail |
+| Interactive pipe       | `null` (explicit) | `true`       | Local dev, real-time output reading   |
