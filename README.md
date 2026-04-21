@@ -14,6 +14,7 @@ It abstracts away the complexities of `proc_open` and POSIX signals into a power
 - **Full Process Control**: `start()`, `join()`, `pause()`, `resume()`, `terminate()`, and `kill()`.
 - **Advanced Process Naming**: Identify your processes easily with namespaces, names, and tags.
 - **Safe by Default**: Output goes to `/dev/null` by default — no Broken pipe risk for fire-and-forget jobs.
+- **Swoole / Event-Loop Compatible**: Three payload delivery modes (`PIPE`, `TEMP_FILE`, `SHM`) to avoid fd corruption under `SWOOLE_HOOK_ALL`.
 - **Extensible**: Easily override the runner script for deep framework integration.
 - **Java-like API**: Familiar method names like `isAlive()` and `join()` for an easy learning curve.
 
@@ -75,6 +76,42 @@ $exitCode = $thread->join();
 echo "Task finished with exit code: $exitCode\n";
 ```
 
+## Swoole / Event-Loop Compatibility
+
+Under **Swoole** with `SWOOLE_HOOK_ALL`, stdin pipes created by `proc_open` are intercepted
+and their file descriptors leak into Swoole's internal table, causing `Bad file descriptor`
+errors on subsequent requests.
+
+Configure the payload mode **once at bootstrap** to avoid pipe fds entirely:
+
+```php
+use Flytachi\Winter\Thread\Thread;
+
+// bootstrap.php — loaded by every Swoole worker process
+if (extension_loaded('swoole') && \Swoole\Coroutine::getCid() !== -1) {
+    // PAYLOAD_TEMP_FILE: payload written to a temp file, unlinked immediately — no ext needed
+    // PAYLOAD_SHM:       payload in shared memory (RAM only) — requires ext-shmop
+    Thread::bindPayloadMode(
+        extension_loaded('shmop')
+            ? Thread::PAYLOAD_SHM
+            : Thread::PAYLOAD_TEMP_FILE
+    );
+}
+```
+
+After that, `Thread::start()` works identically — no other code changes needed.
+
+| Mode | Delivery | Parent pipe fd | Requires |
+|---|---|---|---|
+| `PAYLOAD_PIPE` | stdin pipe (default) | yes | — |
+| `PAYLOAD_TEMP_FILE` | temp file as stdin | **none** | — |
+| `PAYLOAD_SHM` | shared memory | **none** | `ext-shmop` |
+
+See [6. Payload Modes](docs/06-payload-modes.md) for full details, security notes, and the
+isolation guarantee for concurrent calls.
+
+---
+
 ## Output Modes
 
 | `$outputTarget`         | Use case                                                     |
@@ -115,6 +152,7 @@ Full documentation is in the [/docs](docs) directory:
 - [3. Basic Usage](docs/03-basic-usage.md)
 - [4. Debugging and Output Handling](docs/04-debugging-and-output.md)
 - [5. API Reference](docs/05-api-reference.md)
+- [6. Payload Modes (Swoole / Event-Loop Compatibility)](docs/06-payload-modes.md)
 
 ## Contributing
 

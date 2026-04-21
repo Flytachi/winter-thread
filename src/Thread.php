@@ -120,8 +120,16 @@ final class Thread
      */
     private static string $runnerScriptPath;
 
+    public const PAYLOAD_PIPE      = 'pipe';
+    public const PAYLOAD_TEMP_FILE = 'temp_file';
+    public const PAYLOAD_SHM       = 'shm';
+
     private static ?string $serSecurityKey = null;
     private static ?string $binaryPath = null;
+    private static string $payloadMode = self::PAYLOAD_PIPE;
+    private static int $shmSeq = 0;
+
+    private ?int $shmKey = null;
 
 
     /**
@@ -232,30 +240,51 @@ final class Thread
             $payload = serialize($this->runnable);
         }
 
-        $descriptorSpec = [
-            0 => ['pipe', 'r'], // stdin - pipe to write to
-        ];
+        $tmpPath = null;
+        $this->shmKey = null;
+
+        if (self::$payloadMode === self::PAYLOAD_TEMP_FILE) {
+            $tmpPath = $this->writePayloadToTempFile($payload);
+            $descriptorSpec = [0 => ['file', $tmpPath, 'r']];
+        } elseif (self::$payloadMode === self::PAYLOAD_SHM) {
+            $this->shmKey = $this->writePayloadToShm($payload);
+            $descriptorSpec = [0 => ['file', '/dev/null', 'r']];
+        } else {
+            $descriptorSpec = [0 => ['pipe', 'r']];
+        }
 
         if ($outputTarget !== null) {
             $descriptorSpec[1] = ['file', $outputTarget, 'a'];
             $descriptorSpec[2] = ['file', $outputTarget, 'a'];
         } else {
-            $descriptorSpec[1] = ['pipe', 'w']; // stdout - pipe to read from
-            $descriptorSpec[2] = ['pipe', 'w']; // stderr
+            $descriptorSpec[1] = ['pipe', 'w'];
+            $descriptorSpec[2] = ['pipe', 'w'];
         }
 
-        $command = $this->buildCommand($arguments, $debugMode);
+        $command = $this->buildCommand($arguments, $debugMode, $this->shmKey);
 
         $this->processHandle = proc_open($command, $descriptorSpec, $this->processPipes);
 
         if (!is_resource($this->processHandle)) {
+            if ($tmpPath !== null) {
+                @unlink($tmpPath);
+            }
+            if ($this->shmKey !== null) {
+                $this->cleanupShm($this->shmKey);
+                $this->shmKey = null;
+            }
             throw new ThreadException('Failed to start the process using proc_open.');
         }
 
-        fwrite($this->processPipes[0], $payload);
-        fclose($this->processPipes[0]);
+        if (self::$payloadMode === self::PAYLOAD_PIPE) {
+            fwrite($this->processPipes[0], $payload);
+            fclose($this->processPipes[0]);
+        } elseif (self::$payloadMode === self::PAYLOAD_TEMP_FILE) {
+            // child already holds stdin fd open; remove directory entry immediately
+            unlink($tmpPath);
+        }
+        // PAYLOAD_SHM: child reads shm by key passed via CLI arg, no stdin fd
 
-        // If we output to channels, set them to non-blocking mode.
         if ($outputTarget === null) {
             stream_set_blocking($this->processPipes[1], false);
             stream_set_blocking($this->processPipes[2], false);
@@ -266,6 +295,10 @@ final class Thread
             $this->closePipes();
             proc_close($this->processHandle);
             $this->processHandle = null;
+            if ($this->shmKey !== null) {
+                $this->cleanupShm($this->shmKey);
+                $this->shmKey = null;
+            }
             throw new ThreadException('Process failed to start or terminated immediately.');
         }
 
@@ -320,6 +353,10 @@ final class Thread
                 $this->closePipes();
                 proc_close($this->processHandle);
                 $this->processHandle = null;
+                if ($this->shmKey !== null) {
+                    $this->cleanupShm($this->shmKey);
+                    $this->shmKey = null;
+                }
                 return $status['exitcode'];
             }
 
@@ -467,7 +504,7 @@ final class Thread
      *
      * @return string The fully constructed and escaped command string, ready for execution.
      */
-    private function buildCommand(array $arguments, bool $debugMode): string
+    private function buildCommand(array $arguments, bool $debugMode, ?int $shmKey = null): string
     {
         $phpExecutable = self::getPhpBinaryPath();
         $runnerScript = self::getRunnerScriptPath();
@@ -483,6 +520,9 @@ final class Thread
         }
         if ($debugMode) {
             $baseArgs[] = '--debug';
+        }
+        if ($shmKey !== null) {
+            $baseArgs[] = '--shmkey=' . $shmKey;
         }
 
         // Custom args
@@ -513,6 +553,93 @@ final class Thread
             }
         }
         $this->processPipes = [];
+    }
+
+    /**
+     * Writes the serialized payload to a temporary file with restricted permissions.
+     *
+     * Used instead of a pipe when PAYLOAD_TEMP_FILE mode is active (e.g. under Swoole).
+     * The caller must unlink the file after proc_open() succeeds.
+     *
+     * @throws ThreadException If the file cannot be created or written.
+     */
+    private function writePayloadToTempFile(string $payload): string
+    {
+        $tmpPath = tempnam(sys_get_temp_dir(), '__wtr_thread_');
+        if ($tmpPath === false) {
+            throw new ThreadException('Failed to create temporary file for payload.');
+        }
+        chmod($tmpPath, 0600);
+        if (file_put_contents($tmpPath, $payload) === false) {
+            unlink($tmpPath);
+            throw new ThreadException('Failed to write payload to temporary file.');
+        }
+        return $tmpPath;
+    }
+
+    /**
+     * Writes the serialized payload to a System V shared memory segment.
+     *
+     * Retries up to 5 times on key collision. The child process is responsible
+     * for deleting the segment after reading; join() deletes it as a fallback
+     * if the child exits without cleanup (e.g. on crash).
+     *
+     * @throws ThreadException If ext-shmop is unavailable or allocation fails.
+     */
+    private function writePayloadToShm(string $payload): int
+    {
+        $size = strlen($payload);
+        for ($i = 0; $i < 5; $i++) {
+            $key = abs(crc32(uniqid('__wtr_thread_', true) . (++self::$shmSeq)));
+            $shm = @shmop_open($key, 'n', 0600, $size);
+            if ($shm !== false) {
+                shmop_write($shm, $payload, 0);
+                return $key;
+            }
+        }
+        throw new ThreadException('Failed to allocate shared memory segment.');
+    }
+
+    /**
+     * Attempts to delete a shared memory segment by key. Safe to call even if
+     * the segment was already deleted by the child process.
+     */
+    private function cleanupShm(int $key): void
+    {
+        if (!extension_loaded('shmop')) {
+            return;
+        }
+        $shm = @shmop_open($key, 'a', 0, 0);
+        if ($shm !== false) {
+            shmop_delete($shm);
+        }
+    }
+
+    /**
+     * Configures how the serialized payload is delivered to the child process.
+     *
+     * Use PAYLOAD_TEMP_FILE when running inside Swoole coroutines to avoid fd
+     * corruption caused by SWOOLE_HOOK_ALL intercepting pipe descriptors.
+     * Call this once at application bootstrap before starting any threads.
+     *
+     * ```php
+     * if (extension_loaded('swoole') && \Swoole\Coroutine::getCid() !== -1) {
+     *     Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
+     * }
+     * ```
+     *
+     * @param string $mode One of Thread::PAYLOAD_PIPE, Thread::PAYLOAD_TEMP_FILE, or Thread::PAYLOAD_SHM.
+     * @throws ThreadException If an unknown mode is provided, or if PAYLOAD_SHM is requested without ext-shmop.
+     */
+    public static function bindPayloadMode(string $mode): void
+    {
+        if (!in_array($mode, [self::PAYLOAD_PIPE, self::PAYLOAD_TEMP_FILE, self::PAYLOAD_SHM], true)) {
+            throw new ThreadException("Unknown payload mode: {$mode}");
+        }
+        if ($mode === self::PAYLOAD_SHM && !extension_loaded('shmop')) {
+            throw new ThreadException('ext-shmop is required for PAYLOAD_SHM mode.');
+        }
+        self::$payloadMode = $mode;
     }
 
     /**

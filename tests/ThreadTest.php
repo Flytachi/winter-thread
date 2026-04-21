@@ -24,6 +24,7 @@ class ThreadTest extends TestCase
     protected function tearDown(): void
     {
         Thread::bindRunner($this->originalRunnerPath);
+        Thread::bindPayloadMode(Thread::PAYLOAD_PIPE);
     }
 
     // --- Constructor & Getters ---
@@ -326,6 +327,100 @@ class ThreadTest extends TestCase
         $thread->join();
         $this->assertSame('', $thread->readOutput());
         $this->assertSame('', $thread->readError());
+    }
+
+    // --- Payload mode ---
+
+    public function testBindPayloadModeWithInvalidModeThrowsException(): void
+    {
+        $this->expectException(ThreadException::class);
+        Thread::bindPayloadMode('invalid_mode');
+    }
+
+    public function testBindPayloadModeShmThrowsIfExtensionMissing(): void
+    {
+        if (extension_loaded('shmop')) {
+            $this->markTestSkipped('ext-shmop is loaded; cannot test missing-extension path.');
+        }
+        $this->expectException(ThreadException::class);
+        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
+    }
+
+    public function testShmPayloadModeStartsAndJoins(): void
+    {
+        if (!extension_loaded('shmop')) {
+            $this->markTestSkipped('ext-shmop not available.');
+        }
+        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+        $this->assertGreaterThan(0, $pid);
+        $this->assertSame(0, $thread->join());
+    }
+
+    public function testShmPayloadModeIsolatedInLoop(): void
+    {
+        if (!extension_loaded('shmop')) {
+            $this->markTestSkipped('ext-shmop not available.');
+        }
+        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
+        $threads = [];
+        for ($i = 0; $i < 5; $i++) {
+            $threads[$i] = new Thread(new SleepTask(0));
+            $threads[$i]->start();
+        }
+        foreach ($threads as $thread) {
+            $this->assertSame(0, $thread->join());
+        }
+    }
+
+    public function testShmPayloadModeDeliversCorrectOutput(): void
+    {
+        if (!extension_loaded('shmop')) {
+            $this->markTestSkipped('ext-shmop not available.');
+        }
+        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
+        $logFile = sys_get_temp_dir() . '/wt-shm-' . uniqid() . '.log';
+        $thread = new Thread(new EchoTask('shm-payload'));
+        $thread->start(outputTarget: $logFile);
+        $thread->join();
+
+        $this->assertStringContainsString('shm-payload', (string) file_get_contents($logFile));
+        unlink($logFile);
+    }
+
+    public function testTempFilePayloadModeStartsAndJoins(): void
+    {
+        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+        $this->assertGreaterThan(0, $pid);
+        $this->assertSame(0, $thread->join());
+    }
+
+    public function testTempFilePayloadModeIsolatedInLoop(): void
+    {
+        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
+        $threads = [];
+        for ($i = 0; $i < 5; $i++) {
+            $threads[$i] = new Thread(new SleepTask(0));
+            $threads[$i]->start();
+        }
+        foreach ($threads as $thread) {
+            $this->assertSame(0, $thread->join());
+        }
+    }
+
+    public function testTempFilePayloadModeDeliversCorrectOutput(): void
+    {
+        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
+        $logFile = sys_get_temp_dir() . '/wt-tmpfile-' . uniqid() . '.log';
+        $thread = new Thread(new EchoTask('swoole-safe'));
+        $thread->start(outputTarget: $logFile);
+        $thread->join();
+
+        $this->assertStringContainsString('swoole-safe', (string) file_get_contents($logFile));
+        unlink($logFile);
     }
 
     // --- Static configuration ---

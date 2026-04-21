@@ -14,6 +14,23 @@ You can check for installed extensions by running `php -m` in your terminal.
 
 ## Optional Dependencies
 
+### `ext-shmop` for Shared Memory Payload Mode
+
+To use `Thread::PAYLOAD_SHM` (shared memory payload delivery, recommended for high-throughput
+Swoole environments), the `ext-shmop` PHP extension must be loaded.
+
+```bash
+# Check if already available
+php -m | grep shmop
+```
+
+Most production PHP builds include `ext-shmop`. If it is not available, use
+`Thread::PAYLOAD_TEMP_FILE` instead — it requires no extra extensions.
+
+See [6. Payload Modes](06-payload-modes.md) for full details.
+
+---
+
 ### `opis/closure` for Closure Serialization
 
 To execute anonymous classes or `Closure` objects in a background thread, you need to install the `opis/closure` library. It provides a secure way to serialize and deserialize executable code.

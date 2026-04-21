@@ -163,6 +163,35 @@ with `$outputTarget = null`.
 
 ### Static Methods
 
+#### `Thread::bindPayloadMode(string $mode): void`
+
+Configures how the serialized `Runnable` payload is delivered to the child process.
+Call once during application bootstrap before starting any threads.
+
+| Constant | Value | Description |
+|---|---|---|
+| `Thread::PAYLOAD_PIPE` | `'pipe'` | Default. Delivers payload via a stdin pipe. |
+| `Thread::PAYLOAD_TEMP_FILE` | `'temp_file'` | Writes payload to a temp file (`0600`), unlinked immediately after `proc_open`. No parent pipe fd. |
+| `Thread::PAYLOAD_SHM` | `'shm'` | Writes payload to a System V shared memory segment (`0600`). No parent pipe fd. Requires `ext-shmop`. |
+
+```php
+// Swoole: auto-select best mode at bootstrap
+if (extension_loaded('swoole') && \Swoole\Coroutine::getCid() !== -1) {
+    Thread::bindPayloadMode(
+        extension_loaded('shmop')
+            ? Thread::PAYLOAD_SHM
+            : Thread::PAYLOAD_TEMP_FILE
+    );
+}
+```
+
+**Throws:** `ThreadException` — if the mode is unknown, or if `PAYLOAD_SHM` is requested
+without `ext-shmop`.
+
+See [6. Payload Modes](06-payload-modes.md) for full details and security notes.
+
+---
+
 #### `Thread::bindSerSecurity(string $serSecurityKey): void`
 
 Sets a secret key for signed serialization of closures and anonymous classes via `opis/closure`.

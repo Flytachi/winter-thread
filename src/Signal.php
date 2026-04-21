@@ -166,15 +166,24 @@ final class Signal
         if (!posix_kill($pid, 0)) {
             return false;
         }
-        // On Linux, /proc/<pid>/status exposes the process state.
-        // A zombie (State: Z) has already exited — treat it as not running.
+        // Zombie processes have already exited but are not yet reaped by the parent.
+        // They still respond to signal 0, so we must explicitly detect them.
         if (PHP_OS_FAMILY === 'Linux') {
-            $statusFile = "/proc/$pid/status";
+            // On Linux, /proc/<pid>/status exposes the process state directly.
+            $statusFile = '/proc/' . (int) $pid . '/status';
             if (is_readable($statusFile)) {
                 $contents = file_get_contents($statusFile);
                 if ($contents !== false && preg_match('/^State:\s+Z/m', $contents)) {
                     return false;
                 }
+            }
+        } else {
+            // On macOS / BSD, use ps to read the state column.
+            // $pid is cast to int — no shell injection possible.
+            $safePid = (int) $pid;
+            $state = trim((string) shell_exec("ps -o state= -p {$safePid} 2>/dev/null"));
+            if ($state !== '' && str_starts_with($state, 'Z')) {
+                return false;
             }
         }
         return true;

@@ -29,8 +29,11 @@
         "ext-posix": "*",
         "opis/closure": "^4.5"
     },
+    "suggest": {
+        "ext-shmop": "Required for Thread::PAYLOAD_SHM mode (Swoole-compatible shared memory payload delivery)"
+    },
     "require-dev": {
-        "phpunit/phpunit": "@stable",
+        "phpunit/phpunit": "^13.1",
         "squizlabs/php_codesniffer": "@stable"
     },
     "authors": [
