@@ -217,11 +217,11 @@ final class Thread
      *                                              process are reported, and output is piped to the parent
      *                                              for real-time reading.
      * @param string|null                $outputTarget The destination for the process's standard output and error.
-     *                                              - `'/dev/null'` (default): Output is discarded. Safe for
+     *                                              - `null` (default): Output is piped to the parent process. Use only
+     *                                                when the parent actively reads via readOutput()/readError().
+     *                                              - `'/dev/null'`: Output is discarded. Safe for
      *                                                fire-and-forget background tasks where the parent does not
      *                                                read output. Prevents Broken pipe errors.
-     *                                              - `null`: Output is piped to the parent process. Use only
-     *                                                when the parent actively reads via readOutput()/readError().
      *                                              - `'/path/to/file.log'`: Output is appended to the specified file.
      *
      * @return int The Process ID (PID) of the newly created background process.
@@ -229,7 +229,7 @@ final class Thread
      * @throws ThreadException If the process fails to start, for example, due to system
      *                         resource limits or incorrect permissions.
      */
-    public function start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = '/dev/null'): int
+    public function start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = null): int
     {
         if (function_exists('\Opis\Closure\serialize')) {
             $payload = \Opis\Closure\serialize(
