@@ -1,7 +1,23 @@
 {
     "name": "flytachi/winter-thread",
-    "description": "Winter framework Thread component",
+    "description": "Object-oriented background process control for PHP — a Java-like threading model over OS processes.",
     "type": "library",
+    "keywords": [
+        "thread",
+        "threads",
+        "process",
+        "process-control",
+        "background",
+        "background-jobs",
+        "parallel",
+        "concurrency",
+        "proc_open",
+        "posix",
+        "pcntl",
+        "signals",
+        "worker",
+        "swoole"
+    ],
     "license": "MIT",
     "homepage": "https://winterframe.net",
     "scripts": {
@@ -9,8 +25,9 @@
         "test-detail": "vendor/bin/phpunit --testdox"
     },
     "support": {
+        "issues": "https://github.com/flytachi/winter-thread/issues",
         "source": "https://github.com/flytachi/winter-thread",
-        "docs": "https://winterframe.net/docs/threads"
+        "docs": "https://winterframe.net/packages/thread"
     },
     "autoload": {
         "psr-4": {
