@@ -262,9 +262,11 @@ final class Thread
             $descriptorSpec[2] = ['pipe', 'w'];
         }
 
-        $command = $this->buildCommand($arguments, $debugMode, $this->shmKey);
-
-        $this->processHandle = proc_open($command, $descriptorSpec, $this->processPipes);
+        $this->processHandle = proc_open(
+            $this->buildCommand($arguments, $debugMode, $this->shmKey),
+            $descriptorSpec,
+            $this->processPipes
+        );
 
         if (!is_resource($this->processHandle)) {
             if ($tmpPath !== null) {
@@ -540,7 +542,9 @@ final class Thread
         }
 
         $allArgs = array_merge($baseArgs, $customArgs);
-        return escapeshellarg($phpExecutable) . ' ' . escapeshellarg($runnerScript) . ' ' . implode(' ', array_filter($allArgs));
+        return escapeshellarg($phpExecutable) . ' '
+            . escapeshellarg($runnerScript) . ' '
+            . implode(' ', array_filter($allArgs));
     }
 
     /**
