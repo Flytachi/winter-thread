@@ -525,7 +525,7 @@ final class Thread
             $baseArgs[] = '--debug';
         }
         if ($shmKey !== null) {
-            $baseArgs[] = '--shmkey=' . $shmKey;
+            $baseArgs[] = '--shmkey=' . escapeshellarg($shmKey);
         }
 
         // Custom args
