@@ -540,7 +540,7 @@ final class Thread
         }
 
         $allArgs = array_merge($baseArgs, $customArgs);
-        return "{$phpExecutable} {$runnerScript} " . implode(' ', array_filter($allArgs));
+        return escapeshellarg($phpExecutable) . ' ' . escapeshellarg($runnerScript) . ' ' . implode(' ', array_filter($allArgs));
     }
 
     /**
