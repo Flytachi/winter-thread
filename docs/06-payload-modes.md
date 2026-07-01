@@ -176,9 +176,12 @@ Each `Thread::start()` call creates its own independent storage:
 - `PAYLOAD_SHM`: a unique key is generated via `crc32(uniqid(...) + counter)` with
   up to 5 collision retries.
 
-The storage reference (`$tmpPath` / `$shmKey`) is a **local variable** on the `start()`
-call stack — never an instance property — so concurrent calls from different `Thread`
-objects or repeated calls on the same object cannot interfere with each other.
+The `PAYLOAD_TEMP_FILE` reference (`$tmpPath`) is a **local variable** on the `start()` call
+stack — created and unlinked within the same call. The `PAYLOAD_SHM` key is held in the
+`$shmKey` **instance property**, because `join()` needs it later to delete the segment as a
+fallback if the child crashes before cleaning up itself. Either way, each `Thread` object owns
+its own storage and PHP runs `start()` calls sequentially, so distinct `Thread` instances —
+such as the 100 in the loop below — never interfere with one another.
 
 ```php
 // Safe: each start() creates its own isolated temp file or shm segment

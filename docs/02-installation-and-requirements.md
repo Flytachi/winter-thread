@@ -31,15 +31,14 @@ See [6. Payload Modes](06-payload-modes.md) for full details.
 
 ---
 
-### `opis/closure` for Closure Serialization
+## Closure and Anonymous-Class Serialization
 
-To execute anonymous classes or `Closure` objects in a background thread, you need to install the `opis/closure` library. It provides a secure way to serialize and deserialize executable code.
+`opis/closure` is a **required dependency** — it is installed automatically with the package
+(`composer require flytachi/winter-thread`), so there is no separate step. It is what lets
+anonymous classes and `Closure` objects be serialized and executed in a background thread;
+PHP's native `serialize()` cannot handle them and throws on a closure or `class@anonymous`.
 
-```bash
-composer require opis/closure
-```
-
-When using opis/closure, you must also define a secret key.
+When serializing closures or anonymous classes, you must also define a secret key.
 This key is used to sign the serialized closure, preventing remote code execution vulnerabilities.
 Define it once at the beginning of your application's lifecycle using `Thread::bindSerSecurity()`:
 

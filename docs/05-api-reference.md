@@ -33,7 +33,7 @@ The namespace, name, and tag appear in the OS process title as:
 
 ### Instance Methods
 
-#### `start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = null): int`
+#### `start(array $arguments = [], bool $debugMode = false, ?string $outputTarget = '/dev/null'): int`
 
 Serializes the `Runnable`, launches a child PHP process via `proc_open`, and returns immediately.
 
@@ -41,16 +41,16 @@ Serializes the `Runnable`, launches a child PHP process via `proc_open`, and ret
 |-----------------|-----------|----------|-----------------------------------------------------------------------------|
 | `$arguments`    | `array`   | `[]`     | Associative array of custom run arguments. Scalar values and booleans only. `true` creates a valueless flag; `false`/`null` are skipped. Available in `run()` via the `$args` parameter. |
 | `$debugMode`    | `bool`    | `false`  | `true` enables PHP error reporting in the child process.                    |
-| `$outputTarget` | `?string` | `null`   | Where stdout/stderr go. `null` pipes output to the parent — actively read via `readOutput()`/`readError()` to avoid Broken pipe. `'/dev/null'` discards output (safe for fire-and-forget). A file path appends output to that file. |
+| `$outputTarget` | `?string` | `'/dev/null'` | Where stdout/stderr go. `'/dev/null'` (default) discards output — safe for fire-and-forget, no pipe opened. `null` pipes output to the parent — actively read via `readOutput()`/`readError()` to avoid Broken pipe. A file path appends output to that file. |
 
 **Returns:** `int` — PID of the child process.
 
 **Throws:** `ThreadException` — if `proc_open` fails.
 
-> **Warning:** The default `null` pipes stdout/stderr to the parent process. If the parent
+> **Warning:** Passing `null` pipes stdout/stderr to the parent process. If the parent
 > never reads them, the OS buffer (~64 KB) fills up and the child blocks on `write()`,
-> eventually causing a **Broken pipe** error. For fire-and-forget tasks, pass `'/dev/null'`
-> explicitly or actively drain output via `readOutput()` / `readError()`.
+> eventually causing a **Broken pipe** error. Only pass `null` when you actively drain
+> output via `readOutput()` / `readError()`; otherwise keep the `'/dev/null'` default.
 
 ---
 
