@@ -35,13 +35,11 @@ final class ProcessRunner implements Runner
             return 1;
         }
 
-        $security = $this->engine->security();
+        // opis/closure is a hard dependency, so deserialization always goes through
+        // it — never native unserialize(). With a configured secret it verifies the
+        // HMAC signature, rejecting forged/tampered payloads (guards Object Injection).
         try {
-            if (function_exists('\Opis\Closure\serialize')) {
-                $runnable = \Opis\Closure\unserialize($payload, $security);
-            } else {
-                $runnable = unserialize($payload);
-            }
+            $runnable = \Opis\Closure\unserialize($payload, $this->engine->security());
         } catch (\Throwable $e) {
             // Includes Opis SecurityException for unsigned/tampered payloads when a
             // secret is configured — reject cleanly instead of a fatal error.

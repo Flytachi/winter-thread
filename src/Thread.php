@@ -265,9 +265,8 @@ final class Thread
 
     private function serialize(Engine $engine): string
     {
-        if (function_exists('\Opis\Closure\serialize')) {
-            return \Opis\Closure\serialize($this->runnable, $engine->security());
-        }
-        return serialize($this->runnable);
+        // opis/closure is a hard dependency; a matching signed/unsigned format is
+        // produced here and verified by the child (see ProcessRunner).
+        return \Opis\Closure\serialize($this->runnable, $engine->security());
     }
 }
