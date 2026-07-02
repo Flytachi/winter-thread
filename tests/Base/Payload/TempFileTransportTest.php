@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Flytachi\Winter\Thread\Tests\Payload;
+namespace Flytachi\Winter\Thread\Tests\Base\Payload;
 
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use PHPUnit\Framework\TestCase;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Flytachi\Winter\Thread\Tests\Bin;
+namespace Flytachi\Winter\Thread\Tests\Working;
 
 use Flytachi\Winter\Thread\Tests\Fixtures\PayloadProbeTask;
 use PHPUnit\Framework\TestCase;

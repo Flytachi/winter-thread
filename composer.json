@@ -6,6 +6,9 @@
     "scripts": {
         "test": "phpunit",
         "test-detail": "phpunit --testdox",
+        "test-base": "phpunit --testsuite base",
+        "test-working": "phpunit --testsuite working",
+        "test-container": "phpunit --group container",
         "cs-check": "phpcs .",
         "cs-fix": "phpcbf ."
     },
@@ -31,7 +34,7 @@
         "squizlabs/php_codesniffer": "@stable"
     },
     "suggest": {
-        "ext-shmop": "Required for Thread::PAYLOAD_SHM mode (Swoole-compatible shared memory payload delivery)"
+        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)"
     },
     "homepage": "https://winterframe.net",
     "support": {

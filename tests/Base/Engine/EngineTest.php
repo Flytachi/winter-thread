@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Flytachi\Winter\Thread\Tests\Engine;
+namespace Flytachi\Winter\Thread\Tests\Base\Engine;
 
 use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
 use Flytachi\Winter\Thread\Engine\ManualEngine;

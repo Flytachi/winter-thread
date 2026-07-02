@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Flytachi\Winter\Thread\Tests;
+namespace Flytachi\Winter\Thread\Tests\Base;
 
 use Flytachi\Winter\Thread\LaunchSpec;
 use PHPUnit\Framework\TestCase;

@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Flytachi\Winter\Thread\Tests\Runner;
+namespace Flytachi\Winter\Thread\Tests\Base\Runner;
 
 use Flytachi\Winter\Thread\Engine\Engine;
 use Flytachi\Winter\Thread\Launch\Launcher;

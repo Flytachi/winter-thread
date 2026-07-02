@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-namespace Flytachi\Winter\Thread\Tests\Launch;
+namespace Flytachi\Winter\Thread\Tests\Base\Launch;
 
 use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\LaunchSpec;

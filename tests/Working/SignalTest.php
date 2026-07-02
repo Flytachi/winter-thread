@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Flytachi\Winter\Thread\Tests;
+namespace Flytachi\Winter\Thread\Tests\Working;
 
 use Flytachi\Winter\Thread\Signal;
 use Flytachi\Winter\Thread\Thread;
