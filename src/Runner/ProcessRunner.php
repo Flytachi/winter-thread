@@ -11,15 +11,27 @@ use Flytachi\Winter\Thread\Runnable;
 
 final class ProcessRunner implements Runner
 {
-    public function __construct(private readonly Engine $engine)
+    /**
+     * @param resource|null $errStream Where diagnostics are written; defaults to STDERR.
+     *                                 Injectable so tests can capture output instead of
+     *                                 leaking it to the console.
+     */
+    public function __construct(
+        private readonly Engine $engine,
+        private readonly mixed $errStream = null,
+    ) {
+    }
+
+    private function stderr(): mixed
     {
+        return $this->errStream ?? STDERR;
     }
 
     public function execute(array $options): int
     {
         $payload = $this->receiveTransport($options)->receive($options);
         if ($payload === '') {
-            fwrite(STDERR, "Error: No payload received.\n");
+            fwrite($this->stderr(), "Error: No payload received.\n");
             return 1;
         }
 
@@ -31,7 +43,7 @@ final class ProcessRunner implements Runner
         }
 
         if (!$runnable instanceof Runnable) {
-            fwrite(STDERR, "Error: The provided payload is not a valid Runnable object.\n");
+            fwrite($this->stderr(), "Error: The provided payload is not a valid Runnable object.\n");
             return 1;
         }
 
@@ -45,8 +57,8 @@ final class ProcessRunner implements Runner
             $runnable->run($this->parseArgs());
             return 0;
         } catch (\Throwable $e) {
-            fwrite(STDERR, 'Uncaught exception in background process: ' . $e->getMessage() . "\n");
-            fwrite(STDERR, $e->getTraceAsString() . "\n");
+            fwrite($this->stderr(), 'Uncaught exception in background process: ' . $e->getMessage() . "\n");
+            fwrite($this->stderr(), $e->getTraceAsString() . "\n");
             return 1;
         }
     }
@@ -61,7 +73,7 @@ final class ProcessRunner implements Runner
     {
         $pid = pcntl_fork();
         if ($pid === -1) {
-            fwrite(STDERR, "Error: fork failed for detached mode.\n");
+            fwrite($this->stderr(), "Error: fork failed for detached mode.\n");
             exit(1);
         }
         if ($pid > 0) {
@@ -70,7 +82,7 @@ final class ProcessRunner implements Runner
         }
         // Worker process W: new session, no controlling terminal, reparented to init.
         if (posix_setsid() === -1) {
-            fwrite(STDERR, "Error: setsid failed for detached mode.\n");
+            fwrite($this->stderr(), "Error: setsid failed for detached mode.\n");
             exit(1);
         }
     }

@@ -42,9 +42,15 @@ class ProcessRunnerTest extends TestCase
         }
         $shm = new ShmTransport();
         $staged = $shm->stage(serialize(['not', 'a', 'runnable']));
-        $engine = $this->engineWithoutSecurity();
-        $code = (new ProcessRunner($engine))->execute(['shmkey' => (string) $staged->ref]);
+        $err = fopen('php://memory', 'w+');
+
+        $code = (new ProcessRunner($this->engineWithoutSecurity(), $err))
+            ->execute(['shmkey' => (string) $staged->ref]);
+
         $this->assertSame(1, $code);
+        rewind($err);
+        $this->assertStringContainsString('not a valid Runnable', (string) stream_get_contents($err));
+        fclose($err);
     }
 
     private function engineWithoutSecurity(): Engine
