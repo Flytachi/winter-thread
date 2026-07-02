@@ -6,6 +6,7 @@ namespace Flytachi\Winter\Thread\Tests\Container\Load;
 
 use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
 use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
+use Flytachi\Winter\Thread\Tests\Container\LeanWorker;
 use Flytachi\Winter\Thread\Tests\Fixtures\BatchSumTask;
 use Flytachi\Winter\Thread\Thread;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -23,19 +24,23 @@ use PHPUnit\Framework\TestCase;
 class StressTest extends TestCase
 {
     use ChildProcessProbe;
+    use LeanWorker;
 
     protected function tearDown(): void
     {
         Thread::bindEngine(new AdaptiveEngine());
     }
 
-    /** @return array<string, array{int, int}> */
+    /** @return array<string, array{int, int, bool}> */
     public static function loadProvider(): array
     {
         return [
-            '40 all-at-once'   => [40, 40],
-            '100 all-at-once'  => [100, 100],
-            '300 pooled (≤50)' => [300, 50],
+            '40 default'   => [40, 40, false],
+            '100 default'  => [100, 100, false],
+            '300 default'  => [300, 50, false],
+            '40 lean'      => [40, 40, true],
+            '100 lean'     => [100, 100, true],
+            '300 lean'     => [300, 50, true],
         ];
     }
 
@@ -45,9 +50,10 @@ class StressTest extends TestCase
     }
 
     #[DataProvider('loadProvider')]
-    public function testConcurrencyScaling(int $total, int $maxConcurrent): void
+    public function testConcurrencyScaling(int $total, int $maxConcurrent, bool $lean): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindEngine($lean ? $this->leanEngine() : new AdaptiveEngine());
+        $worker = $lean ? 'lean' : 'default';
         $fdBefore = $this->fdCount();
         $startedAt = microtime(true);
 
@@ -82,7 +88,8 @@ class StressTest extends TestCase
         $zombies = $this->zombieChildCount();
 
         fwrite(STDOUT, sprintf(
-            "\n  stress: total=%d, max_concurrent=%d -> %.2fs (%.0f proc/s); zombies=%d; fds %s -> %s\n",
+            "\n  stress[%-7s]: total=%d, max_concurrent=%d -> %.2fs (%.0f proc/s); zombies=%d; fds %s -> %s\n",
+            $worker,
             $total,
             $maxConcurrent,
             $elapsed,
