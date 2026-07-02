@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread\Runner;
 
 use Flytachi\Winter\Thread\Engine\Engine;
@@ -9,7 +11,9 @@ use Flytachi\Winter\Thread\Runnable;
 
 final class ProcessRunner implements Runner
 {
-    public function __construct(private readonly Engine $engine) {}
+    public function __construct(private readonly Engine $engine)
+    {
+    }
 
     public function execute(array $options): int
     {

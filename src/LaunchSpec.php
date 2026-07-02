@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread;
 
 final readonly class LaunchSpec
@@ -13,5 +15,6 @@ final readonly class LaunchSpec
         public bool $debug = false,
         public ?string $output = '/dev/null',
         public bool $detached = false,
-    ) {}
+    ) {
+    }
 }

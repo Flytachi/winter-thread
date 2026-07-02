@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread\Payload;
 
 final readonly class StagedPayload
@@ -10,5 +12,6 @@ final readonly class StagedPayload
         public ?string $pipePayload = null,
         public ?string $unlinkAfterOpen = null,
         public mixed $ref = null,
-    ) {}
+    ) {
+    }
 }

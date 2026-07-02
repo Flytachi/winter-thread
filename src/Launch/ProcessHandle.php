@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread\Launch;
 
 use Flytachi\Winter\Thread\Payload\PayloadTransport;
@@ -17,7 +19,8 @@ final class ProcessHandle
         private readonly int $pid,
         private readonly PayloadTransport $transport,
         private readonly StagedPayload $staged,
-    ) {}
+    ) {
+    }
 
     public function getPid(): int
     {

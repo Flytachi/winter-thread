@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread\Payload;
 
 final class PipeTransport implements PayloadTransport

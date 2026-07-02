@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+
 namespace Flytachi\Winter\Thread\Launch;
 
 use Flytachi\Winter\Thread\LaunchSpec;
@@ -15,7 +16,8 @@ final class CliLauncher implements Launcher
         private readonly string $runnerPath,
         private readonly PayloadTransport $transport,
         private readonly array $childEnv = [],
-    ) {}
+    ) {
+    }
 
     public function launch(LaunchSpec $spec): ProcessHandle
     {
