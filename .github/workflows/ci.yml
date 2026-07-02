@@ -46,7 +46,7 @@ jobs:
 
       - name: Run default + container suites
         run: |
-          docker run --rm -v "$PWD":/app -w /app wt-test:${{ matrix.php }} bash -lc '
+          docker run --init --rm -v "$PWD":/app -w /app wt-test:${{ matrix.php }} bash -lc '
             composer install --no-interaction --no-progress
             composer test
             vendor/bin/phpunit --testsuite container

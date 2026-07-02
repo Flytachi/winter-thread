@@ -37,9 +37,11 @@ class LeakCliTest extends TestCase
             $this->markTestSkipped('requires /proc (Linux container)');
         }
 
-        // Warm up, then measure a stable baseline.
+        // Warm up (fully reaped), then measure a stable baseline.
         for ($i = 0; $i < 5; $i++) {
-            (new Thread(new SleepTask(0)))->start();
+            $warm = new Thread(new SleepTask(0));
+            $warm->start();
+            $warm->join();
         }
         gc_collect_cycles();
         $baseline = count((array) glob('/proc/self/fd/*'));

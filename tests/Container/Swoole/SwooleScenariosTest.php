@@ -9,34 +9,32 @@ use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
 use Flytachi\Winter\Thread\Tests\Fixtures\PayloadProbeTask;
 use Flytachi\Winter\Thread\Thread;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\Attributes\PreserveGlobalState;
-use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Swoole correctness across every runtime state: inside a coroutine with hooks,
- * hooks enabled but outside a coroutine, and swoole loaded with no hooks at all.
- * In each case the payload must arrive intact (the AdaptiveEngine picks a safe
- * transport) and no worker may linger as a zombie.
+ * Swoole correctness in both runtime states: inside a coroutine with hooks
+ * (SWOOLE_HOOK_ALL) and with swoole loaded but dormant. In each case the payload
+ * must arrive intact (the AdaptiveEngine picks a safe transport) and no worker
+ * may linger as a zombie.
  */
 #[Group('container')]
 #[Group('swoole')]
-#[RunTestsInSeparateProcesses]
-#[PreserveGlobalState(false)]
 class SwooleScenariosTest extends TestCase
 {
     use ChildProcessProbe;
 
     protected function setUp(): void
     {
-        if (!extension_loaded('swoole')) {
+        if (!extension_loaded('swoole') || !class_exists('\Swoole\Runtime')) {
             $this->markTestSkipped('ext-swoole not available.');
         }
     }
 
     protected function tearDown(): void
     {
-        \Swoole\Runtime::enableCoroutine(0);
+        if (class_exists('\Swoole\Runtime')) {
+            \Swoole\Runtime::enableCoroutine(0);
+        }
         Thread::bindEngine(new AdaptiveEngine());
     }
 

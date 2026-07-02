@@ -6,7 +6,7 @@ FROM php:${PHP_VERSION}-cli
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git unzip libssl-dev procps \
+        git unzip libssl-dev libbrotli-dev procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Core process/IPC extensions.
