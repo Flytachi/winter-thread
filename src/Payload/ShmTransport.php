@@ -12,6 +12,9 @@ final class ShmTransport implements PayloadTransport
 
     public function stage(string $payload): StagedPayload
     {
+        if (!extension_loaded('shmop')) {
+            throw new ThreadException('ShmTransport requires ext-shmop.');
+        }
         $size = strlen($payload);
         for ($i = 0; $i < 5; $i++) {
             $key = abs(crc32(uniqid('__wtr_thread_', true) . (++self::$seq)));
@@ -30,6 +33,9 @@ final class ShmTransport implements PayloadTransport
 
     public function receive(array $options): string
     {
+        if (!extension_loaded('shmop')) {
+            throw new ThreadException('ShmTransport requires ext-shmop.');
+        }
         $key = (int) ($options['shmkey'] ?? 0);
         $shm = @shmop_open($key, 'a', 0, 0);
         if ($shm === false) {

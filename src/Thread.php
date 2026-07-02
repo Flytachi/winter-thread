@@ -96,7 +96,7 @@ final class Thread
      * @param array<string, scalar|null> $arguments    Custom per-run arguments (read via getopt as --arg-*).
      * @param bool                       $debugMode    Enable child error reporting.
      * @param string|null                $outputTarget '/dev/null' (default), null (pipe to parent), or a file path.
-     * @param bool                       $detached     Daemonize the child (fork + setsid) for zombie-free fire-and-forget.
+     * @param bool                       $detached     Daemonize the child (fork + setsid); zombie-free.
      *
      * @return int The PID of the launched process.
      * @throws ThreadException If the process fails to start.
@@ -107,6 +107,12 @@ final class Thread
         ?string $outputTarget = '/dev/null',
         bool $detached = false,
     ): int {
+        if ($this->handle !== null && $this->handle->isAlive()) {
+            throw new ThreadException(
+                'Thread is already running; join()/reap() it or create a new Thread before starting again.',
+            );
+        }
+
         $engine = self::engine();
         $spec = new LaunchSpec(
             payload: $this->serialize($engine),
