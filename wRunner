@@ -1,0 +1,29 @@
+#!/usr/bin/env php
+<?php
+
+use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+
+$autoloader = dirname(__DIR__, 2) . '/autoload.php';
+if (file_exists($autoloader)) {
+    require_once $autoloader;
+} else {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
+
+set_time_limit(0);
+ob_implicit_flush();
+ignore_user_abort(true);
+
+$options = getopt('', ['namespace::', 'name::', 'tag::', 'debug', 'detach', 'shmkey::']);
+
+if (isset($options['debug'])) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+} else {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    ini_set('display_startup_errors', 0);
+}
+
+exit((new AdaptiveEngine())->runner()->execute($options));

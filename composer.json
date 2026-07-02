@@ -19,7 +19,7 @@
             "Flytachi\\Winter\\Thread\\Tests\\": "tests/"
         }
     },
-    "bin": ["wExecutor"],
+    "bin": ["wRunner"],
     "require": {
         "php": ">=8.4",
         "ext-pcntl": "*",
