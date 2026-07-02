@@ -87,7 +87,7 @@ only act on freshly obtained PIDs.
 ### Handling signals inside a task (graceful shutdown)
 
 By default SIGTERM, SIGINT, and SIGHUP already **terminate** the worker — so
-`terminate()`, `interrupt()`, `close()`, and `kill()` stop a task out of the box,
+`terminate()`, `interrupt()`, and `kill()` stop a task out of the box,
 with **no signal code in `run()` at all** (the [test suite](15-testing.md) verifies
 this against a plain `sleep()` task). You only add a handler when you want a
 **graceful** stop: catch the signal, flush/checkpoint/release, and exit cleanly

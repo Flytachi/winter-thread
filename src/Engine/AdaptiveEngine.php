@@ -86,7 +86,13 @@ final readonly class AdaptiveEngine implements Engine
     /** @return array<string,string> */
     private function childEnv(): array
     {
-        return $this->secret !== null ? ['WINTER_THREAD_SECRET' => $this->secret] : [];
+        if ($this->secret !== null) {
+            return ['WINTER_THREAD_SECRET' => $this->secret];
+        }
+        // No signing: if the parent's environment carries an ambient
+        // WINTER_THREAD_SECRET, neutralize it — otherwise the child inherits it,
+        // builds a verifier, and rejects our (unsigned) payloads.
+        return getenv('WINTER_THREAD_SECRET') !== false ? ['WINTER_THREAD_SECRET' => ''] : [];
     }
 
     private static function detectTransport(): PayloadTransport

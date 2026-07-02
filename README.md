@@ -29,7 +29,7 @@ signals behind a friendly API.
 - **Safe by Default**: Output goes to `/dev/null` by default — no Broken pipe risk for fire-and-forget jobs.
 - **Swoole / Event-Loop Compatible**: Pluggable payload transports (pipe, temp-file, shared-memory); the default engine auto-detects an active Swoole runtime and avoids fd corruption under `SWOOLE_HOOK_ALL`.
 - **Zombie-free fire-and-forget**: Optional detached mode (`fork` + `setsid`) reparents workers to init, so long-lived parents (FPM, daemons) never accumulate zombies.
-- **Pluggable Engine**: Swap transport, launcher, or child-side runner through a single `Engine` — build custom backends (Docker, SSH, …) without touching `Thread`.
+- **Pluggable Engine**: Swap the payload transport or the launcher through a single `Engine` — build custom backends (Docker, SSH, …) without touching `Thread`.
 - **Java-like API**: Familiar method names like `isAlive()` and `join()` for an easy learning curve.
 
 ## Requirements

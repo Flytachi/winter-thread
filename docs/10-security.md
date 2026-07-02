@@ -116,6 +116,15 @@ name/tag, each argument key and value, and any transport CLI arg — is escaped 
 into the shell command, and a hostile argument value cannot break out of its
 quoting.
 
+> ⚠️ **But those flags are still *visible*.** The namespace/name/tag, your per-run
+> `--arg-*` **values**, and the `--shmkey` are on the command line, readable by any
+> same-user process via `ps` / `/proc/<pid>/cmdline`. **Never put a secret in
+> `start()` arguments or in the process metadata** — put sensitive data in the
+> task's **constructor** (it travels in the payload, not argv), and keep the signing
+> secret in the environment (where the engine already puts it). The `0600` shm
+> segment blocks *other* users, but its key on argv lets same-user processes attach —
+> so the shm payload is only as private as your same-uid trust boundary.
+
 ## Recommendations
 
 - **Set a secret in production** (`WINTER_THREAD_SECRET` or `withSecurity()`) —

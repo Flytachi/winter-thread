@@ -13,8 +13,8 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
  *
  * This class provides a high-level, Java-like API for creating and managing
  * background processes. It is a thin facade over the configured {@see Engine}, which
- * chooses the payload transport, the launcher, and the child-side runner. By default
- * an {@see AdaptiveEngine} is used, so `new Thread(...)->start()` works out of the box.
+ * chooses the payload transport and the launcher. By default an {@see AdaptiveEngine}
+ * is used, so `new Thread(...)->start()` works out of the box.
  *
  * ---
  * ### Example

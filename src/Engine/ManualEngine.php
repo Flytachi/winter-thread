@@ -101,7 +101,13 @@ final class ManualEngine implements Engine
         if ($this->launcher !== null) {
             return $this->launcher;
         }
-        $childEnv = $this->secret !== null ? ['WINTER_THREAD_SECRET' => $this->secret] : [];
+        if ($this->secret !== null) {
+            $childEnv = ['WINTER_THREAD_SECRET' => $this->secret];
+        } else {
+            // Neutralize an ambient WINTER_THREAD_SECRET the child would inherit, so
+            // unsigned payloads aren't rejected by a stray verifier.
+            $childEnv = getenv('WINTER_THREAD_SECRET') !== false ? ['WINTER_THREAD_SECRET' => ''] : [];
+        }
         return new CliLauncher($this->binaryPath(), $this->runnerPath(), $this->transport(), $childEnv);
     }
 }

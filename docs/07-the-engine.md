@@ -143,7 +143,7 @@ Use `ManualEngine` when you want an explicit, environment-independent config
 The `Launcher` is the seam for new backends (Docker, SSH, remote nodes). Provide
 a built instance and the engine returns it unchanged; wiring transport/secret/
 `wRunner` into a custom backend is your responsibility (see
-[the distinction above](#parent-side-vs-child-side--a-crucial-distinction)).
+[the distinction above](#the-engine-is-parent-side-only)).
 
 ```php
 new AdaptiveEngine(launcher: new MySshLauncher(/* host, key, … */));

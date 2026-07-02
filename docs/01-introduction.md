@@ -95,9 +95,9 @@ PHP has no safe shared-memory threads. Winter Thread embraces that and spawns
   automatic selection under Swoole.
 - **Zombie-free fire-and-forget** via an optional [detached mode](09-detached-mode.md).
 - **Signed serialization** to defend against payload tampering / object injection.
-- A **pluggable [`Engine`](07-the-engine.md)** so you can swap transport, launcher,
-  or the child-side runner — and build custom backends (Docker, SSH, …) — without
-  touching `Thread`.
+- A **pluggable [`Engine`](07-the-engine.md)** so you can swap the payload transport
+  or the launcher — and build custom backends (Docker, SSH, …) — without touching
+  `Thread`.
 - A **non-blocking control model** (`reap()`/`detach()` never stall on a live
   worker), so a single loop can drive hundreds of workers — the foundation for a
   pool.

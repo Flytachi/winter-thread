@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Flytachi\Winter\Thread\Tests\Working;
 
 use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use Flytachi\Winter\Thread\Thread;
@@ -28,6 +30,35 @@ class ThreadTest extends TestCase
     {
         $thread = new Thread(new SleepTask(0));
         $this->assertSame('SleepTask', $thread->getName());
+    }
+
+    /**
+     * Regression: an unsigned engine must not break when the parent environment
+     * carries a stray WINTER_THREAD_SECRET (the child would otherwise inherit it,
+     * build a verifier, and reject every unsigned payload).
+     */
+    public function testUnsignedEngineIgnoresAmbientSecret(): void
+    {
+        $prev = getenv('WINTER_THREAD_SECRET');
+        putenv('WINTER_THREAD_SECRET=ambient-leak');
+        try {
+            $adaptive = new AdaptiveEngine();
+            Thread::bindEngine(
+                (new ManualEngine())
+                    ->withTransport(new PipeTransport())
+                    ->withBinaryPath($adaptive->binaryPath())
+                    ->withRunnerPath($adaptive->runnerPath())
+            );
+            $thread = new Thread(new SleepTask(0));
+            $thread->start();
+            $this->assertSame(0, $thread->join(), 'unsigned task must run despite an ambient secret');
+        } finally {
+            if ($prev === false) {
+                putenv('WINTER_THREAD_SECRET');
+            } else {
+                putenv("WINTER_THREAD_SECRET={$prev}");
+            }
+        }
     }
 
     public function testConstructorDefaults(): void

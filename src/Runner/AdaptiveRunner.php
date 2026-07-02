@@ -126,7 +126,8 @@ final readonly class AdaptiveRunner implements Runner
             $name = $options['name'];
         } else {
             $class = get_class($runnable);
-            $name = substr($class, strrpos($class, '\\') + 1);
+            $pos = strrpos($class, '\\');
+            $name = $pos === false ? $class : substr($class, $pos + 1);
         }
         cli_set_process_title("WinterThread {$namespace}-> {$name}@{$tag}");
     }

@@ -55,8 +55,11 @@ interface Engine
      * The Opis\Closure security provider used to sign (parent) and verify
      * (child) serialized payloads, or `null` when no secret is configured.
      *
-     * When a secret is set, forged or tampered payloads are rejected — the
-     * primary defense against PHP object injection.
+     * Signing is **opt-in**: with a secret set, forged or tampered payloads are
+     * rejected before any object is built (the cryptographic guard against payload
+     * tampering / object injection). With no secret the payload is still handled by
+     * opis/closure — never native `unserialize()` — but without verification, so the
+     * trust boundary falls back to the private, owner-only delivery channel.
      */
     public function security(): ?DefaultSecurityProvider;
 }

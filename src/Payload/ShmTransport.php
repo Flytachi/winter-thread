@@ -23,7 +23,9 @@ final class ShmTransport implements PayloadTransport
         }
         $size = strlen($payload);
         for ($i = 0; $i < 5; $i++) {
-            $key = abs(crc32(uniqid('__wtr_thread_', true) . (++self::$seq)));
+            // Mask the sign bit for a non-negative int key on any build (on 32-bit,
+            // abs(crc32(...)) could overflow to a float).
+            $key = crc32(uniqid('__wtr_thread_', true) . (++self::$seq)) & 0x7fffffff;
             $shm = @shmop_open($key, 'n', 0600, $size);
             if ($shm !== false) {
                 shmop_write($shm, $payload, 0);
