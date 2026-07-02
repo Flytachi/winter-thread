@@ -1,79 +1,112 @@
-# 2. Installation and Requirements
+# 2. Installation & Requirements
 
-To use Winter Thread, your PHP environment must meet a few key requirements.
-
-## System Requirements
-
--   **PHP Version**: PHP 8.1 or higher.
--   **Operating System**: A POSIX-compliant operating system (e.g., Linux, macOS, BSD). This library relies on POSIX signals and process control functions and is **not compatible with Windows**.
--   **PHP Extensions**:
-    -   `ext-pcntl`: The Process Control extension is essential for process forking and management.
-    -   `ext-posix`: The POSIX extension is required for sending signals (`posix_kill`) and identifying processes.
-
-You can check for installed extensions by running `php -m` in your terminal.
-
-## Optional Dependencies
-
-### `ext-shmop` for Shared Memory Payload Mode
-
-To use `Thread::PAYLOAD_SHM` (shared memory payload delivery, recommended for high-throughput
-Swoole environments), the `ext-shmop` PHP extension must be loaded.
+## Install
 
 ```bash
-# Check if already available
-php -m | grep shmop
+composer require flytachi/winter-thread
 ```
 
-Most production PHP builds include `ext-shmop`. If it is not available, use
-`Thread::PAYLOAD_TEMP_FILE` instead — it requires no extra extensions.
+Installing the package also exposes the child bootstrap script as
+`vendor/bin/wRunner`. You never call it by hand — the engine invokes it for you —
+but it must remain executable and reachable on disk (see
+[Runner path](#the-runner-path-wrunner) below).
 
-See [6. Payload Modes](06-payload-modes.md) for full details.
+## Requirements
 
----
+| Requirement | Why | Mandatory? |
+|---|---|---|
+| **PHP >= 8.4** | modern language features (`readonly` classes, first-class callable syntax, named args) | ✅ |
+| **`proc_open`** | spawns the worker processes (core function) | ✅ |
+| **`ext-pcntl`** | `pcntl_fork()` for [detached mode](09-detached-mode.md) | ✅ (Composer) |
+| **`ext-posix`** | `posix_kill()` (signals) and `posix_setsid()` (detached mode) | ✅ (Composer) |
+| **`opis/closure` ^4.5** | safe serialization of closures / anonymous classes and signed payloads | ✅ (Composer) |
+| **`ext-shmop`** | only for the [shared-memory transport](08-payload-transports.md) | ⚪ optional |
 
-## Closure and Anonymous-Class Serialization
+`ext-pcntl` and `ext-posix` are standard, lightweight POSIX extensions bundled
+with almost every Linux/macOS PHP CLI — nothing exotic. There is **no** ZTS build
+requirement and **no** heavy extension (swoole/parallel/pthreads) involved.
 
-`opis/closure` is a **required dependency** — it is installed automatically with the package
-(`composer require flytachi/winter-thread`), so there is no separate step. It is what lets
-anonymous classes and `Closure` objects be serialized and executed in a background thread;
-PHP's native `serialize()` cannot handle them and throws on a closure or `class@anonymous`.
+> **What each dependency actually gates.** The bare spawn/wait path
+> (`start()` → `join()`/`reap()`) only needs `proc_open`. `ext-posix` powers
+> signal control (`pause`, `resume`, `interrupt`, `terminate`, `kill`, and the
+> zombie-aware [`Signal`](../src/Signal.php) helper); `ext-pcntl` powers detached
+> mode's `fork`. The package requires both so the full feature set always works —
+> but if a platform lacks one, only the corresponding feature is affected.
 
-When serializing closures or anonymous classes, you must also define a secret key.
-This key is used to sign the serialized closure, preventing remote code execution vulnerabilities.
-Define it once at the beginning of your application's lifecycle using `Thread::bindSerSecurity()`:
+`ext-shmop` is checked at runtime: [`ShmTransport`](08-payload-transports.md)
+throws a clear `ThreadException` ("ShmTransport requires ext-shmop.") on both the
+staging and receiving side if the extension is missing — never a fatal error.
+
+## Environment notes
+
+### PHP-FPM / web SAPI
+
+`proc_open` must be permitted (not listed in `disable_functions`). Under FPM,
+`PHP_BINARY` points at the **FPM** binary, not a CLI one — running your worker
+through that would be wrong. The default [`AdaptiveEngine`](07-the-engine.md)
+detects a non-CLI SAPI and resolves a real PHP CLI binary from `PHP_BINDIR`
+instead. If detection fails in an unusual setup, set the path explicitly with a
+[`ManualEngine`](07-the-engine.md):
 
 ```php
-use Flytachi\Winter\Thread\Thread;
-
-Thread::bindSerSecurity('your-secret-key');
+Thread::bindEngine(
+    (new ManualEngine())
+        ->withBinaryPath('/usr/bin/php')
+        ->withRunnerPath(__DIR__ . '/vendor/flytachi/winter-thread/wRunner')
+        ->withTransport(new \Flytachi\Winter\Thread\Payload\PipeTransport())
+);
 ```
 
-## Configuration
+> A `ManualEngine` configures **nothing** for you: `transport`, `binaryPath` and
+> `runnerPath` must all be set or the engine throws when they are accessed. Use it
+> only when you deliberately want full control; otherwise the `AdaptiveEngine`
+> handles FPM correctly on its own.
 
-The library provides several static methods for configuration.
-Call these once during your application's bootstrap phase.
+### The runner path (`wRunner`)
 
-### Custom Runner Script
+The child is bootstrapped by the `wRunner` script shipped in the package root.
+The `AdaptiveEngine` locates it automatically relative to the installed package
+(`vendor/flytachi/winter-thread/wRunner`). Two situations need attention:
 
-The internal runner script is located in the library's root directory and is automatically found.
-If you need to customize the path to the runner script (for example, for deep framework integration),
-you can use `Thread::bindRunner()`:
+- **Phar / relocated deployments.** If your code is packed into a `.phar` or the
+  vendor directory is not on a normal filesystem path, the script may not be
+  directly executable. Point a `ManualEngine` at a real on-disk copy with
+  `->withRunnerPath(...)`.
+- **`open_basedir`.** The binary and runner paths must be inside any configured
+  `open_basedir`.
+
+### Windows
+
+The engine targets POSIX (signals, `setsid`, `/proc`). It is developed and tested
+on Linux and macOS. Windows is not supported.
+
+### Containers
+
+If you run [detached](09-detached-mode.md) tasks with your app as **PID 1** in a
+container, add a reaping init (`docker run --init`, or `init: true` in Compose) so
+orphaned workers are collected. Without it, detached workers reparent to your app
+(PID 1) which does not reap them, and they accumulate as zombies. Attached
+tasks that you `join()`/`reap()` do **not** need this. Details in
+[9. Detached Mode](09-detached-mode.md).
+
+## Verify your install
 
 ```php
+<?php
+require 'vendor/autoload.php';
+
+use Flytachi\Winter\Thread\Runnable;
 use Flytachi\Winter\Thread\Thread;
 
-Thread::bindRunner('/path/to/your/custom/runner');
+$thread = new Thread(new class implements Runnable {
+    public function run(array $args): void { /* nothing */ }
+});
+
+echo 'PID:  ' . $thread->start() . PHP_EOL;
+echo 'exit: ' . $thread->join() . PHP_EOL; // 0
 ```
 
-### Custom PHP Binary Path
-
-When running under PHP-FPM, CGI, or other web SAPIs, `PHP_BINARY` returns the path
-to the web handler (e.g., `/usr/sbin/php-fpm83`), not the CLI binary needed
-for spawning background processes. If you need to explicitly specify the PHP CLI binary path,
-use `Thread::bindBinaryPath()`:
-
-```php
-use Flytachi\Winter\Thread\Thread;
-
-Thread::bindBinaryPath('/usr/bin/php');
-```
+Expected output is a numeric PID followed by `exit: 0`. Anonymous classes work
+because `opis/closure` is a hard dependency — you are not restricted to named
+task classes (though named classes are recommended for readable process titles
+and simpler debugging).

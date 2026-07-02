@@ -1,11 +1,14 @@
 {
     "name": "flytachi/winter-thread",
-    "description": "Object-oriented background process control for PHP — a Java-like threading model over OS processes.",
+    "description": "A lightweight process engine for PHP — Java-like control of background tasks as isolated OS processes, without heavy extensions (no swoole/pthreads/parallel).",
     "type": "library",
     "license": "MIT",
     "scripts": {
         "test": "phpunit",
         "test-detail": "phpunit --testdox",
+        "test-base": "phpunit --testsuite base",
+        "test-working": "phpunit --testsuite working",
+        "test-container": "phpunit --testsuite container",
         "cs-check": "phpcs .",
         "cs-fix": "phpcbf ."
     },
@@ -19,19 +22,19 @@
             "Flytachi\\Winter\\Thread\\Tests\\": "tests/"
         }
     },
-    "bin": ["wExecutor"],
+    "bin": ["wRunner"],
     "require": {
-        "php": ">=8.1",
+        "php": ">=8.4",
         "ext-pcntl": "*",
         "ext-posix": "*",
         "opis/closure": "^4.5"
     },
     "require-dev": {
         "phpunit/phpunit": "^13.1",
-        "squizlabs/php_codesniffer": "@stable"
+        "squizlabs/php_codesniffer": "^4.0"
     },
     "suggest": {
-        "ext-shmop": "Required for Thread::PAYLOAD_SHM mode (Swoole-compatible shared memory payload delivery)"
+        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)"
     },
     "homepage": "https://winterframe.net",
     "support": {

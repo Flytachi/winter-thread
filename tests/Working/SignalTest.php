@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Flytachi\Winter\Thread\Tests;
+namespace Flytachi\Winter\Thread\Tests\Working;
 
 use Flytachi\Winter\Thread\Signal;
 use Flytachi\Winter\Thread\Thread;
@@ -11,6 +11,16 @@ use PHPUnit\Framework\TestCase;
 
 class SignalTest extends TestCase
 {
+    /** Polls until the process dies (or a timeout), then asserts it is gone. */
+    private function assertTerminatesWithin(Thread $thread, float $seconds = 3.0): void
+    {
+        $deadline = microtime(true) + $seconds;
+        while ($thread->isAlive() && microtime(true) < $deadline) {
+            usleep(20_000);
+        }
+        $this->assertFalse($thread->isAlive());
+    }
+
     // --- isProcessRunning ---
 
     public function testIsProcessRunningForCurrentProcess(): void
@@ -30,8 +40,7 @@ class SignalTest extends TestCase
         $thread = new Thread(new SleepTask(30));
         $pid = $thread->start();
         $this->assertTrue(Signal::interrupt($pid));
-        usleep(300_000);
-        $this->assertFalse($thread->isAlive());
+        $this->assertTerminatesWithin($thread);
     }
 
     public function testInterruptReturnsFalseForNonExistentPid(): void
@@ -46,8 +55,7 @@ class SignalTest extends TestCase
         $thread = new Thread(new SleepTask(30));
         $pid = $thread->start();
         $this->assertTrue(Signal::termination($pid));
-        usleep(300_000);
-        $this->assertFalse($thread->isAlive());
+        $this->assertTerminatesWithin($thread);
     }
 
     public function testTerminationReturnsFalseForNonExistentPid(): void
@@ -62,8 +70,7 @@ class SignalTest extends TestCase
         $thread = new Thread(new SleepTask(30));
         $pid = $thread->start();
         $this->assertTrue(Signal::kill($pid));
-        usleep(300_000);
-        $this->assertFalse($thread->isAlive());
+        $this->assertTerminatesWithin($thread);
     }
 
     public function testKillReturnsFalseForNonExistentPid(): void
@@ -78,8 +85,7 @@ class SignalTest extends TestCase
         $thread = new Thread(new SleepTask(30));
         $pid = $thread->start();
         $this->assertTrue(Signal::close($pid));
-        usleep(300_000);
-        $this->assertFalse($thread->isAlive());
+        $this->assertTerminatesWithin($thread);
     }
 
     public function testCloseReturnsFalseForNonExistentPid(): void

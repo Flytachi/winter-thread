@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Flytachi\Winter\Thread\Tests;
+namespace Flytachi\Winter\Thread\Tests\Working;
 
+use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Payload\PipeTransport;
+use Flytachi\Winter\Thread\Payload\ShmTransport;
+use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use Flytachi\Winter\Thread\Thread;
-use Flytachi\Winter\Thread\ThreadException;
 use Flytachi\Winter\Thread\Tests\Fixtures\ArgsTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\EchoTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\FailTask;
@@ -14,17 +18,10 @@ use PHPUnit\Framework\TestCase;
 
 class ThreadTest extends TestCase
 {
-    private string $originalRunnerPath;
-
-    protected function setUp(): void
-    {
-        $this->originalRunnerPath = Thread::getRunnerScriptPath();
-    }
-
     protected function tearDown(): void
     {
-        Thread::bindRunner($this->originalRunnerPath);
-        Thread::bindPayloadMode(Thread::PAYLOAD_PIPE);
+        // Reset to a fresh default engine so a bindEngine() in any test never leaks.
+        Thread::bindEngine(new AdaptiveEngine());
     }
 
     // --- Constructor & Getters ---
@@ -33,6 +30,35 @@ class ThreadTest extends TestCase
     {
         $thread = new Thread(new SleepTask(0));
         $this->assertSame('SleepTask', $thread->getName());
+    }
+
+    /**
+     * Regression: an unsigned engine must not break when the parent environment
+     * carries a stray WINTER_THREAD_SECRET (the child would otherwise inherit it,
+     * build a verifier, and reject every unsigned payload).
+     */
+    public function testUnsignedEngineIgnoresAmbientSecret(): void
+    {
+        $prev = getenv('WINTER_THREAD_SECRET');
+        putenv('WINTER_THREAD_SECRET=ambient-leak');
+        try {
+            $adaptive = new AdaptiveEngine();
+            Thread::bindEngine(
+                (new ManualEngine())
+                    ->withTransport(new PipeTransport())
+                    ->withBinaryPath($adaptive->binaryPath())
+                    ->withRunnerPath($adaptive->runnerPath())
+            );
+            $thread = new Thread(new SleepTask(0));
+            $thread->start();
+            $this->assertSame(0, $thread->join(), 'unsigned task must run despite an ambient secret');
+        } finally {
+            if ($prev === false) {
+                putenv('WINTER_THREAD_SECRET');
+            } else {
+                putenv("WINTER_THREAD_SECRET={$prev}");
+            }
+        }
     }
 
     public function testConstructorDefaults(): void
@@ -167,6 +193,144 @@ class ThreadTest extends TestCase
         $result = $thread->join(timeout: 1);
         $this->assertNull($result);
         $thread->kill();
+    }
+
+    // --- reap() / getExitCode() ---
+
+    public function testReapReturnsFalseWhileRunning(): void
+    {
+        $thread = new Thread(new SleepTask(30));
+        $thread->start();
+        $this->assertFalse($thread->reap());
+        $this->assertTrue($thread->isAlive());
+        $thread->kill();
+        $thread->join();
+    }
+
+    public function testReapReturnsTrueForNotStarted(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $this->assertTrue($thread->reap());
+    }
+
+    public function testReapReturnsTrueAfterProcessFinishes(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->start();
+        // Wait for the child to exit without reaping it.
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+        $this->assertTrue($thread->reap());
+        $this->assertFalse($thread->isAlive());
+    }
+
+    public function testReapCollectsZombie(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+
+        // Let the child exit. Until reaped it lingers as a zombie (state Z).
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+
+        $thread->reap();
+
+        // After reaping, the PID must no longer exist as a zombie.
+        $state = trim((string) shell_exec('ps -o state= -p ' . (int) $pid . ' 2>/dev/null'));
+        $this->assertStringStartsNotWith('Z', $state);
+    }
+
+    public function testGetExitCodeIsNullBeforeFinish(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $this->assertNull($thread->getExitCode());
+        $thread->start();
+        $this->assertNull($thread->getExitCode());
+        $thread->join();
+    }
+
+    public function testGetExitCodeAfterJoin(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->start();
+        $thread->join();
+        $this->assertSame(0, $thread->getExitCode());
+    }
+
+    public function testGetExitCodeAfterReap(): void
+    {
+        $thread = new Thread(new FailTask());
+        $thread->start();
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+        $thread->reap();
+        $this->assertNotSame(0, $thread->getExitCode());
+        $this->assertNotNull($thread->getExitCode());
+    }
+
+    public function testReapInPoolLoopHarvestsFinished(): void
+    {
+        // Mixed pool: some short, some long. reap() must release the short ones
+        // while the long ones keep running, all without blocking.
+        $running = [
+            new Thread(new SleepTask(0)),
+            new Thread(new SleepTask(0)),
+            new Thread(new SleepTask(30)),
+        ];
+        foreach ($running as $t) {
+            $t->start();
+        }
+
+        // Give the short tasks time to finish.
+        usleep(300_000);
+
+        $running = array_values(array_filter($running, fn(Thread $t) => !$t->reap()));
+
+        $this->assertCount(1, $running); // only the long-running one survives
+        $running[0]->kill();
+        $running[0]->join();
+    }
+
+    // --- detach() ---
+
+    public function testDetachStopsTracking(): void
+    {
+        $thread = new Thread(new SleepTask(1));
+        $thread->start();
+        $thread->detach();
+
+        // After detaching, the handle is gone: tracking methods report inactive.
+        $this->assertFalse($thread->isAlive());
+        $this->assertTrue($thread->reap());
+        $this->assertFalse($thread->kill());
+    }
+
+    public function testDetachOnNotStartedIsNoop(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->detach();
+        $this->assertFalse($thread->isAlive());
+    }
+
+    // --- destructor ---
+
+    public function testDestructorReapsFinishedProcessWithoutZombie(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+
+        // Drop the only reference: the destructor must reap the finished child.
+        unset($thread);
+        gc_collect_cycles();
+
+        $state = trim((string) shell_exec('ps -o state= -p ' . (int) $pid . ' 2>/dev/null'));
+        $this->assertStringStartsNotWith('Z', $state);
     }
 
     // --- isAlive() ---
@@ -329,91 +493,20 @@ class ThreadTest extends TestCase
         $this->assertSame('', $thread->readError());
     }
 
-    // --- Payload mode ---
+    // --- Payload transport (engine-driven) ---
 
-    public function testBindPayloadModeWithInvalidModeThrowsException(): void
+    public function testTempFileEngineStartsAndJoins(): void
     {
-        $this->expectException(ThreadException::class);
-        Thread::bindPayloadMode('invalid_mode');
-    }
-
-    public function testBindPayloadModeShmThrowsIfExtensionMissing(): void
-    {
-        if (extension_loaded('shmop')) {
-            $this->markTestSkipped('ext-shmop is loaded; cannot test missing-extension path.');
-        }
-        $this->expectException(ThreadException::class);
-        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
-    }
-
-    public function testShmPayloadModeStartsAndJoins(): void
-    {
-        if (!extension_loaded('shmop')) {
-            $this->markTestSkipped('ext-shmop not available.');
-        }
-        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
+        Thread::bindEngine((new AdaptiveEngine(transport: new TempFileTransport())));
         $thread = new Thread(new SleepTask(0));
         $pid = $thread->start();
         $this->assertGreaterThan(0, $pid);
         $this->assertSame(0, $thread->join());
     }
 
-    public function testShmPayloadModeIsolatedInLoop(): void
+    public function testTempFileEngineDeliversCorrectOutput(): void
     {
-        if (!extension_loaded('shmop')) {
-            $this->markTestSkipped('ext-shmop not available.');
-        }
-        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
-        $threads = [];
-        for ($i = 0; $i < 5; $i++) {
-            $threads[$i] = new Thread(new SleepTask(0));
-            $threads[$i]->start();
-        }
-        foreach ($threads as $thread) {
-            $this->assertSame(0, $thread->join());
-        }
-    }
-
-    public function testShmPayloadModeDeliversCorrectOutput(): void
-    {
-        if (!extension_loaded('shmop')) {
-            $this->markTestSkipped('ext-shmop not available.');
-        }
-        Thread::bindPayloadMode(Thread::PAYLOAD_SHM);
-        $logFile = sys_get_temp_dir() . '/wt-shm-' . uniqid() . '.log';
-        $thread = new Thread(new EchoTask('shm-payload'));
-        $thread->start(outputTarget: $logFile);
-        $thread->join();
-
-        $this->assertStringContainsString('shm-payload', (string) file_get_contents($logFile));
-        unlink($logFile);
-    }
-
-    public function testTempFilePayloadModeStartsAndJoins(): void
-    {
-        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
-        $thread = new Thread(new SleepTask(0));
-        $pid = $thread->start();
-        $this->assertGreaterThan(0, $pid);
-        $this->assertSame(0, $thread->join());
-    }
-
-    public function testTempFilePayloadModeIsolatedInLoop(): void
-    {
-        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
-        $threads = [];
-        for ($i = 0; $i < 5; $i++) {
-            $threads[$i] = new Thread(new SleepTask(0));
-            $threads[$i]->start();
-        }
-        foreach ($threads as $thread) {
-            $this->assertSame(0, $thread->join());
-        }
-    }
-
-    public function testTempFilePayloadModeDeliversCorrectOutput(): void
-    {
-        Thread::bindPayloadMode(Thread::PAYLOAD_TEMP_FILE);
+        Thread::bindEngine((new AdaptiveEngine(transport: new TempFileTransport())));
         $logFile = sys_get_temp_dir() . '/wt-tmpfile-' . uniqid() . '.log';
         $thread = new Thread(new EchoTask('swoole-safe'));
         $thread->start(outputTarget: $logFile);
@@ -423,18 +516,18 @@ class ThreadTest extends TestCase
         unlink($logFile);
     }
 
-    // --- Static configuration ---
-
-    public function testBindRunnerChangesScriptPath(): void
+    public function testShmEngineDeliversCorrectOutput(): void
     {
-        Thread::bindRunner('/tmp/custom-runner');
-        $this->assertSame('/tmp/custom-runner', Thread::getRunnerScriptPath());
-    }
+        if (!extension_loaded('shmop')) {
+            $this->markTestSkipped('ext-shmop not available.');
+        }
+        Thread::bindEngine((new AdaptiveEngine(transport: new ShmTransport())));
+        $logFile = sys_get_temp_dir() . '/wt-shm-' . uniqid() . '.log';
+        $thread = new Thread(new EchoTask('shm-payload'));
+        $thread->start(outputTarget: $logFile);
+        $thread->join();
 
-    public function testGetRunnerScriptPathReturnsDefaultWhenNotSet(): void
-    {
-        $path = Thread::getRunnerScriptPath();
-        $this->assertStringEndsWith('wExecutor', $path);
-        $this->assertFileExists($path);
+        $this->assertStringContainsString('shm-payload', (string) file_get_contents($logFile));
+        unlink($logFile);
     }
 }

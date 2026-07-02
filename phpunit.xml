@@ -1,13 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
-         stopOnFailure="false">
+         stopOnFailure="false"
+         defaultTestSuite="default">
 
     <testsuites>
-        <testsuite name="Winter Thread">
-            <directory>tests</directory>
+        <!-- Runs on any machine (composer test). Unsupported extensions self-skip. -->
+        <testsuite name="default">
+            <directory>tests/Base</directory>
+            <directory>tests/Working</directory>
+        </testsuite>
+
+        <testsuite name="base">
+            <directory>tests/Base</directory>
+        </testsuite>
+        <testsuite name="working">
+            <directory>tests/Working</directory>
+        </testsuite>
+
+        <!--
+        Heavy, environment-specific tests (leak / timing / nested / workload,
+        with swoole and fpm sub-groups). Excluded from the default run by NOT
+        being part of the "default" suite; executed inside containers via
+        tests/run-container.sh or the composer test-container script.
+        -->
+        <testsuite name="container">
+            <directory>tests/Container</directory>
         </testsuite>
     </testsuites>
 
@@ -16,15 +36,5 @@
             <directory suffix=".php">src</directory>
         </include>
     </source>
-
-    <!--
-    Coverage report: run with XDEBUG_MODE=coverage php vendor/bin/phpunit
-    or add the -\-coverage-html build/coverage flag.
-    <coverage>
-        <report>
-            <html outputDirectory="build/coverage"/>
-        </report>
-    </coverage>
-    -->
 
 </phpunit>
