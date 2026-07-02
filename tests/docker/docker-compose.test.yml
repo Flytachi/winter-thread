@@ -1,0 +1,22 @@
+# Test harness for a single PHP version (set via PHP_VERSION env).
+# Driven by tests/run-container.sh, which iterates a list of versions.
+services:
+  wt-test:
+    build:
+      context: ../..
+      dockerfile: tests/docker/Dockerfile
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+    volumes:
+      - ../../:/app
+    working_dir: /app
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        composer install --no-interaction --no-progress
+        echo "== default suite (base + working) =="
+        composer test
+        echo "== container groups =="
+        vendor/bin/phpunit --group container
