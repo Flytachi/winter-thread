@@ -46,4 +46,54 @@ class ProcessHandleTest extends TestCase
         $state = trim((string) shell_exec('ps -o state= -p ' . $pid . ' 2>/dev/null'));
         $this->assertStringStartsNotWith('Z', $state);
     }
+
+    public function testReapDoesNotBlockOnLiveProcess(): void
+    {
+        $h = $this->handleFor('sleep 5');
+
+        $t0 = microtime(true);
+        $reaped = $h->reap();
+        $elapsed = microtime(true) - $t0;
+
+        $this->assertFalse($reaped, 'reap() must not collect a still-running process');
+        $this->assertLessThan(0.5, $elapsed, 'reap() must be non-blocking on a live process');
+
+        $h->signal(SIGKILL);
+        $h->join();
+    }
+
+    public function testDetachIsNonBlockingAndLeavesProcessRunning(): void
+    {
+        $h = $this->handleFor('sleep 5');
+        $pid = $h->getPid();
+
+        $t0 = microtime(true);
+        $h->detach();
+        $elapsed = microtime(true) - $t0;
+
+        // A proc_close() regression here would block until the child exits (~5s).
+        $this->assertLessThan(0.5, $elapsed, 'detach() must be non-blocking on a live process');
+        $this->assertTrue(posix_kill($pid, 0), 'detach() must leave the worker running, not kill it');
+
+        // Clean up the abandoned child ourselves.
+        posix_kill($pid, SIGKILL);
+        pcntl_waitpid($pid, $status);
+    }
+
+    public function testDestructorDoesNotBlockOnLiveProcess(): void
+    {
+        $h = $this->handleFor('sleep 5');
+        $pid = $h->getPid();
+
+        $t0 = microtime(true);
+        unset($h);
+        gc_collect_cycles();
+        $elapsed = microtime(true) - $t0;
+
+        // Dropping a Thread whose child is still running must never hang the parent.
+        $this->assertLessThan(0.5, $elapsed, 'destructor must not block on a live child');
+
+        posix_kill($pid, SIGKILL);
+        pcntl_waitpid($pid, $status);
+    }
 }
