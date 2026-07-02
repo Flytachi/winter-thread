@@ -1,5 +1,6 @@
 # Winter Thread: A Modern Process Control Library for PHP
 
+[![Tests](https://img.shields.io/github/actions/workflow/status/flytachi/winter-thread/ci.yml?branch=main&label=tests)](https://github.com/flytachi/winter-thread/actions/workflows/ci.yml)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/flytachi/winter-thread.svg)](https://packagist.org/packages/flytachi/winter-thread)
 [![PHP Version Require](https://img.shields.io/packagist/php-v/flytachi/winter-thread.svg?style=flat-square)](https://packagist.org/packages/flytachi/winter-thread)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
