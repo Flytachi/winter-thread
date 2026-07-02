@@ -24,11 +24,42 @@ class GenerateReport implements Runnable
 }
 ```
 
-The object must be **serializable**: don't store live resources (PDO handles,
-open sockets, stream resources) in its properties. Open them *inside* `run()`
-instead — the whole point is that the worker starts with a clean slate.
+### The `Runnable` contract
 
-`run()` receives an `$args` array of per-run values (see [Arguments](#arguments)).
+```php
+interface Runnable
+{
+    public function run(array $args): void;
+}
+```
+
+- `run()` is the **only** entry point; the whole task lives here.
+- Its return value is ignored — signal outcomes through the **exit code**
+  (`return`/normal completion → `0`; throwing → non-zero) or through side effects
+  (write to a DB, a file, a queue).
+- `$args` is an associative array of per-run values (see [Arguments](#arguments)).
+
+### Serializability — the one hard rule
+
+The task object is **serialized in the parent and rebuilt in the child**, so
+everything reachable from its properties must survive serialization:
+
+- ✅ Store scalars, arrays, and plain serializable objects (IDs, DTOs, config).
+- ✅ Closures and anonymous classes are fine — `opis/closure` handles them.
+- ❌ Do **not** store live resources: PDO/mysqli handles, open sockets, stream
+  resources, cURL handles, or objects holding them. They cannot cross a process
+  boundary.
+
+Open those resources **inside `run()`** instead — the entire point is that the
+worker starts with a clean slate and its own fresh connections:
+
+```php
+public function run(array $args): void
+{
+    $pdo = new PDO(...);        // opened here, in the worker — not a property
+    // …
+}
+```
 
 ## 2. Create a `Thread`
 
@@ -38,14 +69,31 @@ use Flytachi\Winter\Thread\Thread;
 $thread = new Thread(
     new GenerateReport(42),
     'Reporting',      // namespace  (grouping, shown in the OS process title)
-    'ReportBuilder',  // name       (auto-derived from the class if null)
+    'ReportBuilder',  // name       (optional; auto-derived from the class if null)
     'job-42'          // tag        (optional instance label)
 );
 ```
 
-The three metadata fields are cosmetic but invaluable in production: they form
-the process title (visible in `ps`/`htop`), e.g.
-`WinterThread Reporting -> ReportBuilder@job-42`.
+Constructing a `Thread` does **not** start anything. The three metadata fields
+are cosmetic but invaluable in production — they form the OS **process title**
+(visible in `ps`/`htop`):
+
+```
+WinterThread Reporting -> ReportBuilder@job-42
+```
+
+Details of each field:
+
+- **`namespace`** — a logical grouping (default `''`).
+- **`name`** — if you pass `null`, it is auto-derived from the task's class:
+  the short class name (e.g. `GenerateReport`), or the literal `anonymous` for an
+  anonymous class. Pass a string to override.
+- **`tag`** — an optional instance discriminator (default `null`); if omitted, the
+  process title shows `@runnable`.
+
+> The process title is only set when `cli_set_process_title()` is available on the
+> platform; where it is not, the task still runs — you just don't get the pretty
+> `ps` label.
 
 ## 3. Start it
 
@@ -58,6 +106,41 @@ echo "started $pid\n";
 // main script keeps running immediately
 ```
 
+### `start()` signature
+
+```php
+public function start(
+    array   $arguments    = [],
+    bool    $debugMode    = false,
+    ?string $outputTarget = '/dev/null',
+    bool    $detached     = false,
+): int
+```
+
+- `$arguments` — per-run values (below).
+- `$debugMode` — enable child-side error reporting (see [4. Output & Debugging](04-output-and-debugging.md)).
+- `$outputTarget` — where stdout/stderr go (see [4. Output & Debugging](04-output-and-debugging.md)).
+- `$detached` — daemonize for zombie-free fire-and-forget (see [8. Detached Mode](08-detached-mode.md)).
+
+Returns the launched process **PID** (`int`). Throws
+[`ThreadException`](11-api-reference.md#threadexception-class) if the process
+fails to start (e.g. `proc_open` denied, bad binary/runner path, or the process
+dies immediately).
+
+### One start per `Thread`
+
+A `Thread` guards against being started while it is already running:
+
+```php
+$thread->start();
+$thread->start(); // ThreadException: "Thread is already running; join()/reap() it
+                  // or create a new Thread before starting again."
+```
+
+To run the same task again, either `join()`/`reap()` the previous run first, or —
+more commonly — create a **new** `Thread`. Reusing a `Thread` after it has
+finished and been reaped is allowed; reusing it while alive is not.
+
 ### Arguments
 
 Pass per-run values as the first argument to `start()`. They arrive in `run()`'s
@@ -68,30 +151,32 @@ $thread->start(['format' => 'csv', 'compress' => true]);
 
 public function run(array $args): void
 {
-    $format = $args['format'];    // 'csv'
-    $gz     = $args['compress'];  // true
+    $format = $args['format'];    // 'csv'  (string)
+    $gz     = $args['compress'];  // true   (bool)
 }
 ```
 
-Values must be scalars or `null`. `true` becomes a valueless flag; `false` and
-`null` are skipped. (Internally they are passed as `--arg-*` CLI options and
-parsed back for you — you never deal with the CLI.)
+Rules — worth knowing exactly, because they are strict:
 
-### `start()` signature
+- Values must be **scalars or `null`**. Non-scalar, non-null values are silently
+  **dropped** (arrays/objects don't cross as arguments — put structured data in
+  the task's constructor instead, where it is serialized).
+- `true` becomes a **valueless flag** and comes back as boolean `true`.
+- `false` and `null` are **skipped entirely** — the key won't appear in `$args`.
+  So test presence with `??`/`isset`, not `=== false`.
+- Every other scalar is stringified: an `int`/`float`/`bool`-in-a-string arrives
+  in `run()` as a **string** (`'42'`, not `42`). Cast as needed.
+- Keys are stringified too.
 
-```php
-public function start(
-    array   $arguments   = [],
-    bool    $debugMode   = false,
-    ?string $outputTarget = '/dev/null',
-    bool    $detached    = false,
-): int
-```
+Internally they travel as escaped `--arg-<key>[=<value>]` CLI options and are
+parsed back for you — you never touch the command line, and values cannot inject
+into the shell.
 
-- `$arguments` — per-run values (above).
-- `$debugMode` — enable child-side error reporting (see [4. Output & Debugging](04-output-and-debugging.md)).
-- `$outputTarget` — where stdout/stderr go (see [4. Output & Debugging](04-output-and-debugging.md)).
-- `$detached` — daemonize for zombie-free fire-and-forget (see [8. Detached Mode](08-detached-mode.md)).
+> **Arguments vs. constructor.** Use the **constructor** for the task's real
+> payload (it is serialized, keeps types, and accepts any serializable value). Use
+> **`$arguments`** for small per-run scalar switches (`format`, `verbose`). If you
+> find yourself flattening structures into arguments, move them to the
+> constructor.
 
 ## 4. Wait for the result (optional)
 
@@ -105,10 +190,11 @@ if ($exit !== 0) {
 }
 ```
 
-- `join(int $timeout = 0)` — waits up to `$timeout` seconds (`0` = forever).
-  Returns `null` on timeout, `-1` if the thread was never started.
+- `join(int $timeout = 0)` — waits up to `$timeout` **seconds** (`0` = forever).
+  Returns `null` on timeout, `-1` if the thread was never started. Internally it
+  polls process status every 50 ms.
 - If you never call `join()`/`reap()`, see [5. Process Control](05-process-control.md)
-  for how the engine avoids leaving zombie processes behind.
+  for how the engine still avoids leaving zombie processes behind.
 
 ## Fire-and-forget
 
@@ -119,13 +205,23 @@ this is safe:
 new Thread(new SendWelcomeEmail($userId))->start();
 ```
 
-For a long-lived parent (FPM worker, daemon) that never joins, use detached mode
-so no zombie accumulates — see [8. Detached Mode](08-detached-mode.md).
+For a **long-lived** parent (FPM worker, daemon) that never joins, use
+[detached mode](08-detached-mode.md) so no zombie accumulates:
+
+```php
+new Thread(new SendWelcomeEmail($userId))->start(detached: true);
+```
 
 ## Exit codes & failures
 
-- The task returns normally → exit code `0`.
-- The task throws an uncaught exception → the runner logs it to STDERR and exits
-  non-zero.
-- The payload can't be deserialized (e.g. tampered, or signed with the wrong
-  secret) → exit non-zero, no code runs.
+| Outcome | Exit code | Where to look |
+|---|---|---|
+| `run()` returns normally | `0` | — |
+| `run()` throws an uncaught exception | non-zero (`1`) | message + stack trace on STDERR |
+| Payload empty / not a `Runnable` | `1` | STDERR |
+| Payload can't be deserialized (tampered, or signed with the wrong secret) | `1` | STDERR; **no task code runs** |
+
+The runner **always** catches exceptions from `run()` — it logs the message and
+trace to STDERR and exits non-zero — so failures are detectable via `join()` even
+without [debug mode](04-output-and-debugging.md). Where STDERR goes depends on
+your `$outputTarget`.
