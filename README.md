@@ -4,12 +4,24 @@
 [![PHP Version Require](https://img.shields.io/packagist/php-v/flytachi/winter-thread.svg?style=flat-square)](https://packagist.org/packages/flytachi/winter-thread)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 
-**Winter Thread** provides a clean, object-oriented API for running and controlling background processes in PHP, simulating a traditional threading model for parallel and long-running tasks.
+**Winter Thread** is a *process engine* for PHP: a clean, object-oriented,
+Java-like API for running and controlling background tasks as isolated OS
+processes — for parallel and long-running work.
 
-It abstracts away the complexities of `proc_open` and POSIX signals into a powerful and easy-to-use interface.
+**No heavy extensions.** Unlike `pthreads`, `ext-parallel`, or Swoole, it needs
+no ZTS build and no exotic runtime — just `proc_open` and the standard POSIX
+extensions (`ext-pcntl`, `ext-posix`) that ship with nearly every PHP install.
+Each task runs in a fresh, isolated PHP process, so there is no shared state to
+corrupt and no inherited connections to break.
+
+It is deliberately a low-level **engine** — a small, dependable core to build
+pools, queues and schedulers on — that abstracts away `proc_open` and POSIX
+signals behind a friendly API.
 
 ## Key Features
 
+- **No heavy extensions**: No swoole / parallel / pthreads, no ZTS build — just `proc_open` + standard POSIX. Runs on a normal PHP install.
+- **Clean process isolation**: Each task runs in a brand-new PHP process — no inherited DB connections, sockets, or global state to corrupt.
 - **Fluent, Object-Oriented API**: Manage background processes as objects.
 - **Full Process Control**: `start()`, `join()`, `pause()`, `resume()`, `terminate()`, and `kill()`.
 - **Advanced Process Naming**: Identify your processes easily with namespaces, names, and tags.
@@ -186,20 +198,26 @@ suite via the bundled `tests/docker/Dockerfile`, on a PHP 8.4 / 8.5 matrix.
 
 ## Documentation
 
-Full documentation is in the [/docs](docs) directory:
+Full documentation lives in [`/docs`](docs/README.md):
 
-- [1. Introduction](docs/01-introduction.md)
-- [2. Installation and Requirements](docs/02-installation-and-requirements.md)
-- [3. Basic Usage](docs/03-basic-usage.md)
-- [4. Debugging and Output Handling](docs/04-debugging-and-output.md)
-- [5. API Reference](docs/05-api-reference.md)
-- [6. Payload Modes (Swoole / Event-Loop Compatibility)](docs/06-payload-modes.md)
+1. [Introduction](docs/01-introduction.md) — philosophy, the no-heavy-ext story, when to use it
+2. [Installation & Requirements](docs/02-installation-and-requirements.md)
+3. [Basic Usage](docs/03-basic-usage.md)
+4. [Output & Debugging](docs/04-output-and-debugging.md)
+5. [Process Control & Lifecycle](docs/05-process-control.md)
+6. [The Engine](docs/06-the-engine.md)
+7. [Payload Transports](docs/07-payload-transports.md)
+8. [Detached Mode](docs/08-detached-mode.md)
+9. [Security](docs/09-security.md)
+10. [Architecture & Internals](docs/10-architecture.md)
+11. [API Reference](docs/11-api-reference.md)
+12. [Testing](docs/12-testing.md)
 
 ## Contributing
 
 Contributions are welcome! Please submit a pull request or open an issue for bugs, questions, or feature requests.
 
+
 ## License
 
 This library is open-source software licensed under the [MIT license](LICENSE).
-git add tests/Container/LeanWorker.php tests/Container/Metrics/MemoryFootprintTest.php tests/Container/Load/StressTest.php tests/Fixtures/IdleTask.php

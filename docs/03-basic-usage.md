@@ -1,189 +1,131 @@
 # 3. Basic Usage
 
-The core workflow of Winter Thread: define a task, wrap it in a `Thread`, start it.
+The core workflow: **define a task**, **wrap it in a `Thread`**, **start it**,
+and optionally **wait** for the result.
 
----
+## 1. Define a task with `Runnable`
 
-## Step 1: Create a Runnable Task
-
-Implement the `Runnable` interface. All task logic goes inside `run()`.
-
-**Critical constraint:** the `Runnable` object is serialized and passed to the child process
-via stdin. Properties must not contain non-serializable values such as database connections,
-file handles, or sockets. Create those resources *inside* `run()`.
+Any class implementing [`Runnable`](../src/Runnable.php) can run in a background
+process. All logic goes in `run()`:
 
 ```php
-<?php
-
 use Flytachi\Winter\Thread\Runnable;
 
-class ReportGenerator implements Runnable
+class GenerateReport implements Runnable
 {
     public function __construct(private int $reportId) {}
 
     public function run(array $args): void
     {
-        // Initialize resources here, not in the constructor
-        $db = new PDO('mysql:host=localhost;dbname=mydb', 'user', 'pass');
-
-        $rows = $db->query("SELECT * FROM orders WHERE report_id = {$this->reportId}")
-                   ->fetchAll();
-
-        file_put_contents(
-            "/tmp/report-{$this->reportId}.json",
-            json_encode($rows)
-        );
+        // Executes in a separate, clean PHP process.
+        $format = $args['format'] ?? 'pdf';
+        // … heavy work …
     }
 }
 ```
 
----
+The object must be **serializable**: don't store live resources (PDO handles,
+open sockets, stream resources) in its properties. Open them *inside* `run()`
+instead — the whole point is that the worker starts with a clean slate.
 
-## Step 2: Start the Thread
+`run()` receives an `$args` array of per-run values (see [Arguments](#arguments)).
 
-Create a `Thread` with your task and call `start()`. The method returns immediately with
-the child process PID — your main script is never blocked.
-
-By default, output from the child goes to `/dev/null`. This is the safest option for
-background jobs: no pipe is opened, so no **Broken pipe** risk regardless of how long the
-job runs or whether the parent stays alive.
+## 2. Create a `Thread`
 
 ```php
-<?php
-
-require 'vendor/autoload.php';
-
 use Flytachi\Winter\Thread\Thread;
 
 $thread = new Thread(
-    new ReportGenerator(42),
-    'Billing',        // namespace  — appears in `ps` output
-    'ReportGenerator', // name
-    'report-42'       // tag
-);
-
-$pid = $thread->start(); // non-blocking; output goes to /dev/null by default
-echo "Report generation started in background (PID: $pid)\n";
-
-// Main script continues immediately
-doOtherWork();
-```
-
----
-
-## Step 3: Wait for Completion (Optional)
-
-If you need the result before continuing, call `join()`. It blocks until the child exits
-and returns the exit code (`0` = success, non-zero = failure).
-
-```php
-$exitCode = $thread->join();
-
-if ($exitCode === 0) {
-    echo "Report ready.\n";
-} else {
-    echo "Report failed (exit code: $exitCode).\n";
-}
-```
-
-To avoid waiting indefinitely, pass a timeout in seconds:
-
-```php
-$exitCode = $thread->join(timeout: 30);
-
-if ($exitCode === null) {
-    echo "Timed out — task is still running.\n";
-    $thread->kill(); // force-stop if needed
-}
-```
-
----
-
-## Step 4: Pass Custom Arguments (Optional)
-
-Pass an associative array to `start()`. Arguments become available in `run()` via `$args`.
-
-Rules:
-- `'key' => 'value'` → `$args['key'] === 'value'`
-- `'flag' => true` → `$args['flag'] === true` (valueless flag)
-- `'skip' => false` or `'skip' => null` → not included in `$args`
-
-```php
-class ExportTask implements Runnable
-{
-    public function run(array $args): void
-    {
-        $format  = $args['format']  ?? 'csv';
-        $dryRun  = isset($args['dry-run']);
-        $userId  = $args['user-id'] ?? null;
-
-        echo "Exporting as $format" . ($dryRun ? ' (dry run)' : '') . "\n";
-    }
-}
-
-$thread = new Thread(new ExportTask());
-$thread->start([
-    'format'  => 'json',
-    'user-id' => '42',
-    'dry-run' => true,
-]);
-$thread->join();
-```
-
----
-
-## Step 5: Log Output to a File (Optional)
-
-For tasks that produce output you want to keep, pass a file path as `$outputTarget`.
-Output is appended — safe to reuse the same file across multiple jobs.
-
-```php
-$thread->start(
-    debugMode:    true,              // enable PHP error reporting in child
-    outputTarget: '/var/log/app/reports.log'
+    new GenerateReport(42),
+    'Reporting',      // namespace  (grouping, shown in the OS process title)
+    'ReportBuilder',  // name       (auto-derived from the class if null)
+    'job-42'          // tag        (optional instance label)
 );
 ```
 
-See [4. Debugging and Output Handling](04-debugging-and-output.md) for all output modes.
+The three metadata fields are cosmetic but invaluable in production: they form
+the process title (visible in `ps`/`htop`), e.g.
+`WinterThread Reporting -> ReportBuilder@job-42`.
 
----
+## 3. Start it
 
-## Full Example
+`start()` serializes the task, launches the process, and returns its PID. It
+**does not block**:
 
 ```php
-<?php
+$pid = $thread->start();
+echo "started $pid\n";
+// main script keeps running immediately
+```
 
-require 'vendor/autoload.php';
+### Arguments
 
-use Flytachi\Winter\Thread\Runnable;
-use Flytachi\Winter\Thread\Thread;
+Pass per-run values as the first argument to `start()`. They arrive in `run()`'s
+`$args`:
 
-class VideoProcessor implements Runnable
+```php
+$thread->start(['format' => 'csv', 'compress' => true]);
+
+public function run(array $args): void
 {
-    public function __construct(private string $file) {}
-
-    public function run(array $args): void
-    {
-        $quality = $args['quality'] ?? 'high';
-        // ... encoding logic
-        file_put_contents("/tmp/{$this->file}.done", "quality=$quality");
-    }
-}
-
-$thread = new Thread(new VideoProcessor('movie.mp4'), 'Media', 'VideoProcessor', 'job-7');
-$pid    = $thread->start(['quality' => 'hd'], outputTarget: '/var/log/app/video.log');
-
-echo "Encoding started (PID: $pid). Doing other work...\n";
-sleep(2);
-
-$exitCode = $thread->join(timeout: 60);
-
-if ($exitCode === null) {
-    echo "Encoding is taking too long, killing...\n";
-    $thread->kill();
-} elseif ($exitCode === 0) {
-    echo "Encoding complete.\n";
-} else {
-    echo "Encoding failed (code: $exitCode). Check /var/log/app/video.log\n";
+    $format = $args['format'];    // 'csv'
+    $gz     = $args['compress'];  // true
 }
 ```
+
+Values must be scalars or `null`. `true` becomes a valueless flag; `false` and
+`null` are skipped. (Internally they are passed as `--arg-*` CLI options and
+parsed back for you — you never deal with the CLI.)
+
+### `start()` signature
+
+```php
+public function start(
+    array   $arguments   = [],
+    bool    $debugMode   = false,
+    ?string $outputTarget = '/dev/null',
+    bool    $detached    = false,
+): int
+```
+
+- `$arguments` — per-run values (above).
+- `$debugMode` — enable child-side error reporting (see [4. Output & Debugging](04-output-and-debugging.md)).
+- `$outputTarget` — where stdout/stderr go (see [4. Output & Debugging](04-output-and-debugging.md)).
+- `$detached` — daemonize for zombie-free fire-and-forget (see [8. Detached Mode](08-detached-mode.md)).
+
+## 4. Wait for the result (optional)
+
+`join()` blocks until the task finishes and returns its exit code — `0` on
+success, non-zero on failure:
+
+```php
+$exit = $thread->join();
+if ($exit !== 0) {
+    // the task threw or failed
+}
+```
+
+- `join(int $timeout = 0)` — waits up to `$timeout` seconds (`0` = forever).
+  Returns `null` on timeout, `-1` if the thread was never started.
+- If you never call `join()`/`reap()`, see [5. Process Control](05-process-control.md)
+  for how the engine avoids leaving zombie processes behind.
+
+## Fire-and-forget
+
+Don't want a result? Just start and move on. Output defaults to `/dev/null`, so
+this is safe:
+
+```php
+new Thread(new SendWelcomeEmail($userId))->start();
+```
+
+For a long-lived parent (FPM worker, daemon) that never joins, use detached mode
+so no zombie accumulates — see [8. Detached Mode](08-detached-mode.md).
+
+## Exit codes & failures
+
+- The task returns normally → exit code `0`.
+- The task throws an uncaught exception → the runner logs it to STDERR and exits
+  non-zero.
+- The payload can't be deserialized (e.g. tampered, or signed with the wrong
+  secret) → exit non-zero, no code runs.
