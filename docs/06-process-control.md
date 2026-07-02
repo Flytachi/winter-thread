@@ -42,7 +42,8 @@ Exact semantics:
   the real worker's.
 - **`isAlive()`** reflects live process status (`proc_get_status`). It becomes
   `false` once the child exits, and also once you `detach()` (you're no longer
-  tracking it), and is `false` before `start()`.
+  tracking it), and is `false` before `start()`. A **paused** worker (SIGSTOP via
+  `pause()`) is still `true` — it is suspended, not gone.
 - **`getExitCode()`** is `null` until the process is **reaped** (by `join()` or a
   successful `reap()`), then holds the integer exit code. ⚠️ If you `detach()` a
   process, it is **never** reaped through this handle, so `getExitCode()` stays
@@ -159,7 +160,26 @@ $exit = $thread->join(timeout: 5);  // wait up to 5s; null on timeout
 - returns **`-1`** if the thread was never started.
 
 Internally `join()` polls process status every 50 ms; `timeout: 0` (the default)
-means no timeout.
+means no timeout. The timeout is in **whole seconds** — there is no sub-second
+granularity. If you need finer control, drive `reap()` in your own loop with a
+shorter `usleep()`.
+
+### `-1` is overloaded — read it carefully
+
+A worker **killed by a signal** (SIGTERM/SIGINT/SIGKILL with no graceful handler
+that exits `0`) never exits normally, so the OS reports no clean exit code: both
+`join()` and `getExitCode()` return **`-1`**. That is the *same* `-1` `join()`
+returns for a thread that was **never started**. So `-1` means "no clean exit
+code", **not** a specific failure value.
+
+Practical rules:
+
+- Treat outcomes as **`0` = success**, **anything else = failure**. Don't ascribe
+  meaning to the exact non-zero number (`-1` for signal death, `1` for a thrown
+  task or a rejected payload, etc.).
+- Tell "still running" from "finished" with `isAlive()`/`reap()`, not the code.
+- If you need to know a worker was *signalled*, track that yourself (you sent the
+  signal), or have the task write its own outcome (a file/DB row) before exiting.
 
 ## Reaping without blocking: `reap()`
 
@@ -238,6 +258,29 @@ So a dropped `Thread` never stalls your parent. But because a still-running chil
 is detached (not waited on), you should still `join()`/`reap()` explicitly in
 long-lived parents — or use detached mode — so cleanup is **deterministic** and
 no zombie survives.
+
+## What happens when the parent exits
+
+Workers are **independent OS processes**, so the engine does **not** kill them when
+your parent ends. Know these behaviors:
+
+- **Parent exits normally.** Destructors run: finished children are reaped,
+  still-running ones are *detached* (left running). Those survivors are then
+  **reparented to init (PID 1)** and reaped there when they finish — they don't
+  die with the parent.
+- **Parent crashes hard** (fatal, or its own SIGKILL). Destructors may not run, but
+  the children keep running regardless and still reparent to init. Nothing is
+  force-stopped for you.
+- **Ctrl+C / terminal hang-up.** An **attached** child shares the parent's
+  controlling terminal and process group (no `setsid`), so a terminal `SIGINT`
+  (Ctrl+C) or `SIGHUP` is delivered to the **whole foreground group** — it hits
+  attached workers too. A [detached](09-detached-mode.md) worker is in its own
+  session and is **insulated** from these.
+
+If you need children to stop **with** the parent, terminate them explicitly (e.g.
+`terminate()`/`kill()` each tracked `Thread` in a shutdown handler) — don't rely on
+process exit to do it. If you need them to **outlive** the parent cleanly, use
+[detached mode](09-detached-mode.md).
 
 ## The non-blocking guarantee
 

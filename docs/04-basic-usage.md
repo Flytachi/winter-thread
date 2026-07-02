@@ -61,6 +61,11 @@ public function run(array $args): void
 }
 ```
 
+> **Keep the task lean.** The task's *entire* object graph is serialized and
+> shipped over the transport on **every** `start()`. A constructor holding a large
+> array or a fat DTO means a large payload and a slower spawn. Pass an **identifier**
+> and load the heavy data inside `run()`, rather than embedding it in the task.
+
 ## 2. Create a `Thread`
 
 ```php
@@ -225,3 +230,8 @@ The runner **always** catches exceptions from `run()` — it logs the message an
 trace to STDERR and exits non-zero — so failures are detectable via `join()` even
 without [debug mode](05-output-and-debugging.md). Where STDERR goes depends on
 your `$outputTarget`.
+
+> **Avoid `exit()`/`die()` inside `run()`.** They bypass the runner's normal path:
+> the exit code becomes whatever you passed to `exit()` (so `exit(0)` on a failure
+> would look like success), and the exception handling above is skipped. Return
+> normally for success, and `throw` for failure — let the runner set the code.

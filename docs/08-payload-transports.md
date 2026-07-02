@@ -123,17 +123,34 @@ cleanup:
   far. It is always safe to call, even if the resource is already gone.
 
 The launcher reads the `StagedPayload` **generically** — it doesn't know which
-transport produced it — which is what keeps transports fully pluggable. See
+transport produced it — which keeps the **parent side** fully generic. See
 [11. Architecture](11-architecture.md).
 
 ## Writing your own transport
 
-Implement [`PayloadTransport`](../src/Payload/PayloadTransport.php) (three methods:
-`stage`, `receive`, `cleanup`) and bind it via an engine — nothing else changes.
-Ideas: a Redis key, a TCP socket, or a named FIFO. Keep two things in mind:
+Implement [`PayloadTransport`](../src/Payload/PayloadTransport.php) — `stage`,
+`receive`, `cleanup` — and bind it via an engine. **But mind the child side:** the
+default [`AdaptiveRunner`](14-api-reference.md#adaptiverunner-final-readonly-class)
+receives the payload from **STDIN** (or shared memory when `--shmkey` is present) —
+it does **not** call your transport's `receive()`. So two cases differ sharply:
 
-- **`stage()` and `receive()` run in different processes**, so they can only
-  coordinate through what the `StagedPayload` carries onto the command line
-  (CLI args) or through an out-of-band channel both sides can name.
-- Keep the delivery channel **private** (owner-only) — the payload is a serialized
-  object and is the deserialization trust boundary. See [10. Security](10-security.md).
+- **Delivering on the child's stdin (fd 0)** — a different way of putting bytes on
+  stdin. This works transparently: your `stage()` sets the fd-0 descriptor and the
+  child reads STDIN as usual; `receive()` is effectively unused. (This is exactly
+  how the built-in pipe and temp-file transports both work.)
+- **Delivering out-of-band** — a Redis key, a TCP socket, a named FIFO: anything
+  *not* on stdin/shm. `stage()` runs in the parent, but the default runner won't
+  call your `receive()`, so the child reads an empty STDIN and fails with
+  *"No payload received"*. To use such a transport you must **also ship a matching
+  child runner** — your own bootstrap (like `wRunner`) that invokes your
+  transport's `receive()` — typically launched by a
+  [custom `Launcher`](14-api-reference.md#launcher-interface). Parent (`Engine`)
+  and child (`Runner`) are independent by design; see
+  [11. Architecture](11-architecture.md).
+
+Two more things to keep in mind:
+
+- **`stage()` and `receive()` run in different processes**, coordinating only
+  through the `StagedPayload`'s CLI args or a channel both sides can name.
+- Keep the delivery channel **private** (owner-only) — the payload is the
+  deserialization trust boundary. See [10. Security](10-security.md).

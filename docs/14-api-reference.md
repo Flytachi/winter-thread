@@ -126,7 +126,7 @@ fails to start.
 
 | Method | Returns | Description |
 |---|---|---|
-| `join(int $timeout = 0)` | `?int` | block (poll 50 ms) until exit; returns the exit code, `null` on timeout (**seconds**; `0` = forever), or `-1` if never started. Reaps on completion. |
+| `join(int $timeout = 0)` | `?int` | block (poll 50 ms) until exit; returns the exit code, `null` on timeout (**seconds**; `0` = forever), or `-1` if never started **or** the worker was signal-killed (see [ch. 6](06-process-control.md)). Reaps on completion. |
 | `reap()` | `bool` | non-blocking: `true` if finished/absent (and reaped, exit code set), `false` if still running |
 | `detach()` | `void` | stop tracking (non-blocking; no `proc_close`). Afterwards `isAlive()`→`false`, `reap()`→`true`, signals→`false`, exit code never collected |
 
@@ -136,7 +136,7 @@ fails to start.
 |---|---|---|
 | `getPid()` | `?int` | launched PID, or `null` before `start()`; the launcher's PID in detached mode |
 | `isAlive()` | `bool` | is the process running now? `false` before start / after finish / after `detach()` |
-| `getExitCode()` | `?int` | exit code once reaped (`join`/`reap`); `null` otherwise, and `null` forever after `detach()` |
+| `getExitCode()` | `?int` | exit code once reaped (`join`/`reap`); `-1` if the worker was signal-killed; `null` before reaping, and `null` forever after `detach()` |
 
 #### Signals *(require `ext-posix`; each returns `false` if not running)*
 
@@ -343,6 +343,11 @@ across the process boundary in two halves plus a cleanup.
 | `cleanup(StagedPayload $staged)` | `void` | parent | release staged resources; safe even if already gone |
 
 `$options` in `receive()` is `array<string, mixed>` — the parsed child CLI options.
+
+> ⚠️ The default [`AdaptiveRunner`](#adaptiverunner-final-readonly-class) receives
+> from **STDIN or shm only** — it does not call a custom transport's `receive()`. A
+> transport delivering out-of-band (Redis/TCP/FIFO) therefore also needs a matching
+> child runner. See [8. Payload Transports](08-payload-transports.md#writing-your-own-transport).
 
 #### `PipeTransport`
 

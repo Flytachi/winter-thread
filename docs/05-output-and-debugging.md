@@ -76,6 +76,12 @@ Notes:
 > **Important:** never pass `null` unless you drain the pipe in a loop like this.
 > A slow or absent reader is exactly the Broken-pipe stall described above.
 >
+> **In particular, `null` + a bare `join()` can deadlock.** `join()` waits for the
+> child to exit but does **not** read the pipes. If the child writes more than the
+> ~64 KB buffer, it blocks on `write()` and never exits — so `join()` waits forever.
+> Always drain in the loop *before* `join()` (as above), or use a file/`/dev/null`
+> target when you won't read.
+>
 > **Under Swoole**, prefer file output over `null` — the output pipes (fd 1/2) are
 > subject to the same `SWOOLE_HOOK_ALL` fd corruption as the payload pipe. The
 > `AdaptiveEngine` fixes the *payload* transport automatically, but it cannot fix
