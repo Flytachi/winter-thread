@@ -49,6 +49,10 @@ final class ProcessRunner implements Runner
             return 1;
         }
 
+        // The serialized string is no longer needed once the object is rebuilt;
+        // free it before running the task (matters for large payloads).
+        unset($payload);
+
         if (!$runnable instanceof Runnable) {
             fwrite($this->stderr(), "Error: The provided payload is not a valid Runnable object.\n");
             return 1;

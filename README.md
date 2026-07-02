@@ -202,3 +202,4 @@ Contributions are welcome! Please submit a pull request or open an issue for bug
 ## License
 
 This library is open-source software licensed under the [MIT license](LICENSE).
+git add tests/Container/LeanWorker.php tests/Container/Metrics/MemoryFootprintTest.php tests/Container/Load/StressTest.php tests/Fixtures/IdleTask.php
