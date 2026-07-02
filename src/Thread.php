@@ -19,7 +19,7 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
  * ---
  * ### Example
  *
- * ```php
+ * ```
  * class MyTask implements Runnable {
  *     public function run(array $args): void { sleep(10); }
  * }
@@ -31,7 +31,7 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
  *
  * Custom configuration is done once at bootstrap via {@see Thread::bindEngine()}:
  *
- * ```php
+ * ```
  * Thread::bindEngine(
  *     (new ManualEngine())
  *         ->withTransport(new TempFileTransport())

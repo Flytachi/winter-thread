@@ -24,7 +24,7 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * - runner path: the packaged `wRunner`;
  * - secret: the explicit argument, else the `WINTER_THREAD_SECRET` env var, else none.
  *
- * ```php
+ * ```
  * // Zero-config — nothing to do; this is already the default.
  * $thread = new Thread(new MyTask());
  *
@@ -35,13 +35,13 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * @see Engine
  * @see ManualEngine
  */
-final class AdaptiveEngine implements Engine
+final readonly class AdaptiveEngine implements Engine
 {
-    private readonly ?string $secret;
-    private readonly PayloadTransport $transport;
-    private readonly string $binaryPath;
-    private readonly string $runnerPath;
-    private readonly ?Launcher $launcher;
+    private ?string $secret;
+    private PayloadTransport $transport;
+    private string $binaryPath;
+    private string $runnerPath;
+    private ?Launcher $launcher;
 
     public function __construct(
         ?string $secret = null,

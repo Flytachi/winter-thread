@@ -9,7 +9,7 @@ use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Runnable;
 
-final class ProcessRunner implements Runner
+final readonly class ProcessRunner implements Runner
 {
     /**
      * @param resource|null $errStream Where diagnostics are written; defaults to STDERR.
@@ -17,8 +17,8 @@ final class ProcessRunner implements Runner
      *                                 leaking it to the console.
      */
     public function __construct(
-        private readonly Engine $engine,
-        private readonly mixed $errStream = null,
+        private Engine $engine,
+        private mixed $errStream = null,
     ) {
     }
 

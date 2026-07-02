@@ -9,14 +9,14 @@ use Flytachi\Winter\Thread\Payload\PayloadTransport;
 use Flytachi\Winter\Thread\Payload\StagedPayload;
 use Flytachi\Winter\Thread\ThreadException;
 
-final class CliLauncher implements Launcher
+final readonly class CliLauncher implements Launcher
 {
     /** @param array<string,string> $childEnv */
     public function __construct(
-        private readonly string $binaryPath,
-        private readonly string $runnerPath,
-        private readonly PayloadTransport $transport,
-        private readonly array $childEnv = [],
+        private string $binaryPath,
+        private string $runnerPath,
+        private PayloadTransport $transport,
+        private array $childEnv = [],
     ) {
     }
 

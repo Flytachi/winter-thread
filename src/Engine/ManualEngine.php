@@ -19,7 +19,7 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * required part left unset throws {@see \Flytachi\Winter\Thread\ThreadException}
  * when accessed. This makes behavior fully predictable, with no environment magic.
  *
- * ```php
+ * ```
  * Thread::bindEngine(
  *     (new ManualEngine())
  *         ->withTransport(new TempFileTransport())
