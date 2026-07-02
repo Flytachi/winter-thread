@@ -12,10 +12,10 @@ namespace Flytachi\Winter\Thread\Runner;
  * and executes the task — returning the process exit code. It is the child-side
  * counterpart to the parent-side {@see \Flytachi\Winter\Thread\Launch\Launcher}.
  *
- * The default {@see ProcessRunner} is driven by the `wRunner` bootstrap script.
+ * The default {@see AdaptiveRunner} is driven by the `wRunner` bootstrap script.
  * Implement this interface to customize how the child bootstraps and runs a task.
  *
- * @see ProcessRunner
+ * @see AdaptiveRunner
  */
 interface Runner
 {

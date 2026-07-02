@@ -266,7 +266,7 @@ final class Thread
     private function serialize(Engine $engine): string
     {
         // opis/closure is a hard dependency; a matching signed/unsigned format is
-        // produced here and verified by the child (see ProcessRunner).
+        // produced here and verified by the child (see AdaptiveRunner).
         return \Opis\Closure\serialize($this->runnable, $engine->security());
     }
 }

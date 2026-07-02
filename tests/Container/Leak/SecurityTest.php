@@ -7,7 +7,7 @@ namespace Flytachi\Winter\Thread\Tests\Container\Leak;
 use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
 use Flytachi\Winter\Thread\Engine\ManualEngine;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
-use Flytachi\Winter\Thread\Runner\ProcessRunner;
+use Flytachi\Winter\Thread\Runner\AdaptiveRunner;
 use Flytachi\Winter\Thread\Tests\Fixtures\MarkedSleepTask;
 use Flytachi\Winter\Thread\Thread;
 use PHPUnit\Framework\Attributes\Group;
@@ -65,7 +65,7 @@ class SecurityTest extends TestCase
         $staged = $shm->stage(\Opis\Closure\serialize(new MarkedSleepTask('x', 0)));
 
         $err = fopen('php://memory', 'w+');
-        $code = (new ProcessRunner($engine, $err))->execute(['shmkey' => (string) $staged->ref]);
+        $code = (new AdaptiveRunner($engine->security(), $err))->execute(['shmkey' => (string) $staged->ref]);
 
         $this->assertSame(1, $code, 'unsigned payload must be rejected under a configured secret');
         rewind($err);

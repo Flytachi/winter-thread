@@ -4,20 +4,39 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Runner;
 
-use Flytachi\Winter\Thread\Engine\Engine;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Runnable;
+use Opis\Closure\Security\DefaultSecurityProvider;
 
-final readonly class ProcessRunner implements Runner
+/**
+ * The default child-side runner — self-configuring, in the same spirit as its
+ * parent-side sibling: it adapts to how the payload was delivered rather than
+ * being told.
+ *
+ * `execute()` receives the payload (a `--shmkey` option means a shared-memory
+ * segment, otherwise it reads STDIN — covering both the pipe and temp-file
+ * deliveries), verifies and deserializes it into a {@see Runnable}, optionally
+ * daemonizes (detached mode), sets the process title, and runs the task —
+ * returning the exit code.
+ *
+ * Signature verification uses the optional {@see DefaultSecurityProvider} passed
+ * in; the `wRunner` bootstrap builds one from the `WINTER_THREAD_SECRET`
+ * environment variable.
+ *
+ * @see Runner
+ */
+final readonly class AdaptiveRunner implements Runner
 {
     /**
-     * @param resource|null $errStream Where diagnostics are written; defaults to STDERR.
-     *                                 Injectable so tests can capture output instead of
-     *                                 leaking it to the console.
+     * @param DefaultSecurityProvider|null $security  Verifies the payload signature — construct it
+     *                                                 from the same secret the parent signed with;
+     *                                                 null means the payload is unsigned.
+     * @param resource|null                $errStream Where diagnostics are written; defaults to
+     *                                                 STDERR. Injectable so tests can capture output.
      */
     public function __construct(
-        private Engine $engine,
+        private ?DefaultSecurityProvider $security = null,
         private mixed $errStream = null,
     ) {
     }
@@ -39,7 +58,7 @@ final readonly class ProcessRunner implements Runner
         // it — never native unserialize(). With a configured secret it verifies the
         // HMAC signature, rejecting forged/tampered payloads (guards Object Injection).
         try {
-            $runnable = \Opis\Closure\unserialize($payload, $this->engine->security());
+            $runnable = \Opis\Closure\unserialize($payload, $this->security);
         } catch (\Throwable $e) {
             // Includes Opis SecurityException for unsigned/tampered payloads when a
             // secret is configured — reject cleanly instead of a fatal error.

@@ -10,7 +10,6 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
 use Flytachi\Winter\Thread\LaunchSpec;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
-use Flytachi\Winter\Thread\Runner\ProcessRunner;
 use Flytachi\Winter\Thread\ThreadException;
 use PHPUnit\Framework\TestCase;
 
@@ -21,7 +20,6 @@ class EngineTest extends TestCase
         $e = new AdaptiveEngine();
         $this->assertInstanceOf(PipeTransport::class, $e->transport());
         $this->assertInstanceOf(CliLauncher::class, $e->launcher());
-        $this->assertInstanceOf(ProcessRunner::class, $e->runner());
         $this->assertStringEndsWith('wRunner', $e->runnerPath());
         $this->assertNull($e->security());
     }

@@ -10,20 +10,22 @@ Everything happens in exactly two processes, and they never share objects — on
 bytes on a channel and flags on a command line:
 
 - **Parent** (your app) — serializes the task, stages the payload, and `proc_open`s
-  the worker. Uses the engine you bound.
-- **Child** (`bin: wRunner`) — a clean PHP CLI process that **always constructs its
-  own `new AdaptiveEngine()`**, receives the payload, verifies + deserializes it,
+  the worker. Uses the `Engine` you bound.
+- **Child** (`bin: wRunner`) — a clean PHP CLI process that constructs an
+  **`AdaptiveRunner`**, reads `WINTER_THREAD_SECRET` from its environment to build
+  the signature verifier, receives the payload, verifies + deserializes it,
   optionally daemonizes, and runs the task.
 
-The child building its *own* AdaptiveEngine (rather than receiving your bound
-engine) is the single most important internal fact:
+The two sides are **fully independent**: the parent-side `Engine` and the
+child-side `Runner` don't reference each other, and neither is shipped across the
+boundary. Only three things cross it:
 
-- the **secret** is propagated parent→child via the `WINTER_THREAD_SECRET`
-  environment variable and read back by the child's engine (see
-  [10. Security](10-security.md));
-- the **receiving transport** is chosen from CLI options (`--shmkey` → shm, else
-  STDIN), not from the parent's transport object (see
-  [8. Payload Transports](08-payload-transports.md)).
+- the **payload**, over the chosen transport channel;
+- the **secret**, via the `WINTER_THREAD_SECRET` env var (owner-only), read
+  directly by `wRunner` (see [10. Security](10-security.md));
+- a few **CLI flags** (`--namespace`, `--shmkey`, `--detach`, `--arg-*`), from
+  which the child also picks its receiving transport (`--shmkey` → shm, else STDIN
+  — see [8. Payload Transports](08-payload-transports.md)).
 
 ## Component map
 
@@ -31,26 +33,27 @@ engine) is the single most important internal fact:
 ════════════ PARENT ════════════          ═══════ CHILD (bin: wRunner) ═══════
 
           Thread  (facade)                    wRunner (thin bootstrap script)
-   start / join / reap / detach / …              │ ALWAYS: new AdaptiveEngine()
+   start / join / reap / detach / …              │ reads WINTER_THREAD_SECRET (env)
                  │ asks the Engine                ▼
-        ┌──────  Engine  ◀── bindEngine()     AdaptiveEngine (child-side)
-        │   AdaptiveEngine (default)              │ security() reads
-        │   ManualEngine                          │   WINTER_THREAD_SECRET (env)
-        │                                         ▼
-        │   Engine provides:                  Runner (interface)
-        │    • transport(): PayloadTransport    └ ProcessRunner
-        │    • launcher():  Launcher               1. transport.receive()  (shmkey? shm : STDIN)
-        │    • runner():    Runner                 2. Opis unserialize + verify signature
-        │    • binaryPath() / runnerPath()         3. detached? fork + setsid
-        │    • security()                          4. set process title
-        ▼                                          5. runnable->run(args)
-   Launcher (interface)                            6. exit(code)
-     └ CliLauncher (proc_open)
-          │ launch(LaunchSpec)             PayloadTransport (interface)
-          ▼                                  ├ PipeTransport
-    ProcessHandle  ◀═══ a Pool drives THIS   ├ TempFileTransport
-      pid, isAlive, reap, join,              └ ShmTransport
+        ┌──────  Engine  ◀── bindEngine()     Runner (interface)
+        │   AdaptiveEngine (default)            └ AdaptiveRunner (child-side default)
+        │   ManualEngine                           1. receive()  (shmkey? shm : STDIN)
+        │                                          2. Opis unserialize + verify signature
+        │   Engine provides (parent-side):         3. detached? fork + setsid
+        │    • transport(): PayloadTransport        4. set process title
+        │    • launcher():  Launcher                5. runnable->run(args)
+        │    • binaryPath() / runnerPath()          6. exit(code)
+        │    • security()
+        ▼                                    PayloadTransport (interface)
+   Launcher (interface)                        ├ PipeTransport
+     └ CliLauncher (proc_open)                 ├ TempFileTransport
+          │ launch(LaunchSpec)                 └ ShmTransport
+          ▼
+    ProcessHandle  ◀═══ a Pool drives THIS directly
+      pid, isAlive, reap, join,
       readOutput/Error, signal, detach
+
+   (Engine and Runner are independent — connected only by payload + env + flags)
 ```
 
 ## Responsibilities
@@ -59,7 +62,7 @@ engine) is the single most important internal fact:
 |---|---|---|---|
 | `Runnable` | interface | — | the task contract (`run(array $args)`) |
 | `Thread` | facade | mutable | the friendly Java-like API; delegates to the engine |
-| `Engine` | interface | — | selects/holds transport, launcher, runner, paths, secret |
+| `Engine` | interface | — | parent-side: selects/holds transport, launcher, paths, secret |
 | `AdaptiveEngine` | class | `readonly` | self-configuring engine (default) |
 | `ManualEngine` | class | immutable via withers | explicit, clean-slate engine |
 | `Launcher` | interface | — | parent side: spawn a process → `ProcessHandle` |
@@ -67,8 +70,8 @@ engine) is the single most important internal fact:
 | `ProcessHandle` | class | mutable (tracks state) | low-level process control (reap/join/detach/signals/read) |
 | `PayloadTransport` | interface | — | parent↔child payload delivery |
 | `Pipe`/`TempFile`/`Shm` `Transport` | class | — | the three delivery strategies |
-| `Runner` | interface | — | child side: read payload, deserialize, run |
-| `ProcessRunner` | class | `readonly` | default runner (+ detached fork/setsid) |
+| `Runner` | interface | — | child-side: read payload, deserialize, run (independent of `Engine`) |
+| `AdaptiveRunner` | class | `readonly` | default child-side runner (+ detached fork/setsid) |
 | `LaunchSpec` | DTO | `readonly` | all launch parameters in one value object |
 | `StagedPayload` | DTO | `readonly` | staging result (fd-0 spec, cli args, cleanup ref) |
 | `Signal` | class | static | POSIX signal helpers, with zombie detection |
@@ -96,8 +99,8 @@ Interfaces exist **only** at genuine extension points (`Engine`, `Launcher`,
    `ProcessHandle`. If anything failed it cleans up the staged resource and throws
    `ThreadException`.
 4. In the **child**, `wRunner` sets `set_time_limit(0)`, `ignore_user_abort(true)`,
-   toggles error reporting from the `--debug` flag, constructs
-   `new AdaptiveEngine()`, and runs its `ProcessRunner`: `receive` → verify +
+   toggles error reporting from the `--debug` flag, builds a verifier from
+   `WINTER_THREAD_SECRET`, and runs an `AdaptiveRunner`: `receive` → verify +
    deserialize → (if `--detach`) `fork`+`setsid` → set process title →
    `runnable->run(parsedArgs)` → `exit(code)`.
 

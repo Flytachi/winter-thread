@@ -6,17 +6,15 @@ namespace Flytachi\Winter\Thread\Engine;
 
 use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Payload\PayloadTransport;
-use Flytachi\Winter\Thread\Runner\Runner;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
 /**
  * The single configuration/strategy root of the engine.
  *
- * An `Engine` decides *how* a task is delivered and executed: it selects the
- * payload transport, the parent-side launcher, and the child-side runner, and it
- * holds the PHP binary path, the runner-script path, and the optional
- * serialization secret. Everything the library needs to spawn and run a task is
- * obtained from an `Engine`.
+ * An `Engine` is the **parent-side** configuration: it selects the payload
+ * transport and the launcher, and holds the PHP binary path, the `wRunner` script
+ * path, and the optional serialization secret. Everything the parent needs to
+ * spawn a task is obtained from an `Engine`.
  *
  * Bind one once at application bootstrap via {@see \Flytachi\Winter\Thread\Thread::bindEngine()}.
  * When nothing is bound, {@see AdaptiveEngine} is used and configures itself for
@@ -42,12 +40,6 @@ interface Engine
      * Consumed directly by higher-level primitives such as a worker pool.
      */
     public function launcher(): Launcher;
-
-    /**
-     * The child-side runner that reads the payload, deserializes it, and runs
-     * the task inside the spawned process.
-     */
-    public function runner(): Runner;
 
     /**
      * Absolute path to the PHP CLI binary used to launch worker processes.

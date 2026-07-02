@@ -28,7 +28,7 @@ supervisor directly on the raw primitives.
 | [`LaunchSpec`](#launchspec-final-readonly-class) | DTO | all launch parameters in one value object |
 | [`PayloadTransport`](#payloadtransport-interface) · [Pipe](#pipetransport) / [TempFile](#tempfiletransport) / [Shm](#shmtransport) | interface / class | payload delivery strategy |
 | [`StagedPayload`](#stagedpayload-final-readonly-class) | DTO | the staging result a launcher consumes |
-| [`Runner`](#runner-interface) · [`ProcessRunner`](#processrunner-final-readonly-class) | interface / class | child-side execution |
+| [`Runner`](#runner-interface) · [`AdaptiveRunner`](#adaptiverunner-final-readonly-class) | interface / class | child-side execution |
 | [`Signal`](#signal-final-class) | class | raw-PID POSIX helpers (zombie-aware) |
 | [`ThreadException`](#threadexception-class) | class | the library's only exception |
 
@@ -172,15 +172,15 @@ must install a handler; see
 ### `Engine` (interface)
 
 `Flytachi\Winter\Thread\Engine\Engine` — the configuration/strategy root, used
-**parent-side**. The child always builds its own `AdaptiveEngine`; the parent's
-`security()` is propagated to it via `WINTER_THREAD_SECRET`
+**parent-side only**. It has no child-side method: the worker runs a separate
+[`AdaptiveRunner`](#adaptiverunner-final-readonly-class). The parent's `security()`
+is propagated to the child via `WINTER_THREAD_SECRET`
 ([11. Architecture](11-architecture.md)).
 
 | Method | Returns | Description |
 |---|---|---|
 | `transport()` | `PayloadTransport` | how the payload is delivered |
 | `launcher()` | `Launcher` | how the process is spawned |
-| `runner()` | `Runner` | how the child runs the task |
 | `binaryPath()` | `string` | absolute PHP CLI binary path |
 | `runnerPath()` | `string` | absolute `wRunner` script path |
 | `security()` | `?DefaultSecurityProvider` | `Opis\Closure\Security\DefaultSecurityProvider` for signing, or `null` when no secret |
@@ -403,24 +403,30 @@ public function execute(array $options): int
 
 **Returns** `int` — the process exit code (`0` success, non-zero failure).
 
-#### `ProcessRunner` (final readonly class)
+#### `AdaptiveRunner` (final readonly class)
 
-`Flytachi\Winter\Thread\Runner\ProcessRunner` — the default runner (driven by
-`wRunner`).
+`Flytachi\Winter\Thread\Runner\AdaptiveRunner` — the default child-side runner
+(driven by `wRunner`). It depends only on a security provider — **not** on the
+`Engine` — so the two sides stay independent.
 
 ```
-new ProcessRunner(Engine $engine, mixed $errStream = null)
+new AdaptiveRunner(?DefaultSecurityProvider $security = null, mixed $errStream = null)
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `$engine` | `Engine` | — | provides `security()` for verification and the receive transport |
+| `$security` | `?DefaultSecurityProvider` | `null` | verifies the payload signature; build it from the same secret the parent signed with (`null` = unsigned). `wRunner` builds it from `WINTER_THREAD_SECRET` |
 | `$errStream` | `resource\|null` | `null` | where diagnostics are written; defaults to `STDERR` (injectable for tests) |
 
-`execute()` flow: receive payload → verify + deserialize via `opis/closure`
-(rejecting empty, non-`Runnable`, or unsigned/tampered payloads with a non-zero
-exit) → optional `fork`+`setsid` (detached) → set process title → `run()` → exit
-code.
+`execute()` flow: receive payload (`--shmkey` → shm, else STDIN) → verify +
+deserialize via `opis/closure` (rejecting empty, non-`Runnable`, or
+unsigned/tampered payloads with a non-zero exit) → optional `fork`+`setsid`
+(detached) → set process title → `run()` → exit code.
+
+> To use a **custom** `Runner`, you replace the child bootstrap: write your own
+> script like `wRunner` that constructs your runner (typically launched by a
+> [custom `Launcher`](#launcher-interface)). There is no `bindEngine` seam for the
+> runner — by design, the child side is independent of the parent's `Engine`.
 
 ---
 
@@ -441,6 +447,11 @@ code.
 | `interruptAndWait(int $pid, int $timeout = 10)` | `bool` | SIGINT then wait |
 | `terminationAndWait(int $pid, int $timeout = 10)` | `bool` | SIGTERM then wait |
 | `closeAndWait(int $pid, int $timeout = 10)` | `bool` | SIGHUP then wait |
+
+> **No `pause`/`resume` here.** `Signal` covers only stop/terminate signals.
+> Suspend/resume by raw PID is not exposed — use `posix_kill($pid, SIGSTOP)` /
+> `posix_kill($pid, SIGCONT)` directly, or the
+> [`Thread::pause()`/`resume()`](#thread-final-class) API.
 
 > ⚠️ Raw PIDs are subject to OS **PID reuse**. Prefer a `Thread`/`ProcessHandle` for
 > reliable tracking; use `Signal` only with freshly obtained PIDs (e.g. a

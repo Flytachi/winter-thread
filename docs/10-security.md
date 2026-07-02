@@ -58,11 +58,11 @@ fatal.
 
 ### How the secret reaches the worker
 
-The worker is a **separate process** that reconstructs its own
-`new AdaptiveEngine()` (see [7. The Engine](07-the-engine.md)), so it needs the
-same secret to verify the signature. The built-in `CliLauncher` passes it through
-the child's **environment** (`WINTER_THREAD_SECRET`), **never through argv**. This
-distinction is deliberate and matters:
+The worker is a **separate process**, so it needs the same secret to verify the
+signature. The `wRunner` bootstrap reads it from its own **environment**
+(`WINTER_THREAD_SECRET`) and builds the verifier — and the built-in `CliLauncher`
+is what put it there, **never through argv**. This distinction is deliberate and
+matters:
 
 - `/proc/<pid>/cmdline` (argv) is **world-readable** — a secret there would leak to
   any local user running `ps`;
@@ -70,7 +70,7 @@ distinction is deliberate and matters:
 
 So the signing secret is never exposed in `ps`/argv. This env-based propagation is
 **load-bearing**, not a convenience: it is how the parent's secret reaches the
-child's independently-constructed engine. (It's also why the secret can't be
+independent child worker. (It's also why the secret can't be
 "auto-generated and derived on both sides" — anything the child could regenerate
 without receiving, an attacker could regenerate too, defeating the signature.)
 

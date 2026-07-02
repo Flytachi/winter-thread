@@ -30,7 +30,7 @@ Unit-level tests for each building block:
 | `Launch/ProcessHandleTest` | `reap`/`join`/`detach`/destructor semantics & the non-blocking guarantee |
 | `LaunchSpecTest` | the launch DTO defaults/values |
 | `Payload/PipeTransportTest`, `TempFileTransportTest`, `ShmTransportTest`, `StagedPayloadTest` | each transport's stage/receive/cleanup (shm self-skips without `ext-shmop`) |
-| `Runner/ProcessRunnerTest` | receive → deserialize/verify → run, and the failure exits |
+| `Runner/AdaptiveRunnerTest` | receive → deserialize/verify → run, and the failure exits |
 
 ### `working` — real end-to-end scenarios (`tests/Working`)
 

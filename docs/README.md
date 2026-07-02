@@ -53,9 +53,9 @@ $thread->join();    // or wait for the exit code
   risks a Broken-pipe stall. ([5](05-output-and-debugging.md))
 - **`reap()`/`detach()` never block on a live worker** — the basis for a pool
   loop. ([6](06-process-control.md), [12](12-patterns.md))
-- **The child always rebuilds its own `AdaptiveEngine`**; the signing secret
-  reaches it via the `WINTER_THREAD_SECRET` env var. ([7](07-the-engine.md),
-  [10](10-security.md))
+- **`Engine` is parent-side only; the child runs a separate `AdaptiveRunner`.**
+  The signing secret reaches the child via the `WINTER_THREAD_SECRET` env var.
+  ([7](07-the-engine.md), [10](10-security.md))
 - **`detach()` ≠ detached mode.** Only `start(detached: true)` (fork + setsid)
   is zombie-free under a long-lived parent. ([9](09-detached-mode.md))
 

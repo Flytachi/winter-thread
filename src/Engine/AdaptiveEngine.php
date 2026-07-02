@@ -9,8 +9,6 @@ use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Payload\PayloadTransport;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
-use Flytachi\Winter\Thread\Runner\ProcessRunner;
-use Flytachi\Winter\Thread\Runner\Runner;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
 /**
@@ -68,11 +66,6 @@ final readonly class AdaptiveEngine implements Engine
         // Otherwise build the default CliLauncher from the resolved config.
         return $this->launcher
             ?? new CliLauncher($this->binaryPath, $this->runnerPath, $this->transport, $this->childEnv());
-    }
-
-    public function runner(): Runner
-    {
-        return new ProcessRunner($this);
     }
 
     public function binaryPath(): string

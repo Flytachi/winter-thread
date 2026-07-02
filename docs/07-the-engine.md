@@ -2,8 +2,9 @@
 
 Everything configurable lives behind a single abstraction: the
 [`Engine`](../src/Engine/Engine.php). It decides *how* a task is delivered and
-executed — the payload transport, the launcher, the child-side runner, the PHP
-binary and runner paths, and the optional signing secret.
+launched — the payload transport, the launcher, the PHP binary and `wRunner`
+paths, and the optional signing secret. (Running the task in the worker is a
+separate child-side concern; see [Parent-side only](#the-engine-is-parent-side-only).)
 
 You bind one **once at bootstrap**:
 
@@ -22,7 +23,6 @@ interface Engine
 {
     public function transport(): PayloadTransport;        // how the payload is delivered
     public function launcher(): Launcher;                 // how the process is spawned
-    public function runner(): Runner;                     // how the child runs the task
     public function binaryPath(): string;                 // PHP CLI binary
     public function runnerPath(): string;                 // wRunner bootstrap script
     public function security(): ?DefaultSecurityProvider; // payload signing (or null)
@@ -32,27 +32,27 @@ interface Engine
 Two implementations ship with the library: `AdaptiveEngine` (self-configuring,
 the default) and `ManualEngine` (explicit, clean slate).
 
-## Parent side vs. child side — a crucial distinction
+## The Engine is parent-side only
 
-The engine is used in **two different processes**, and they do not share the same
-object:
-
-- **Parent (your app).** The engine you `bindEngine()` is used here to
-  `serialize()` the task, choose the `transport()`, build the `launcher()`, resolve
-  `binaryPath()`/`runnerPath()`, and sign the payload via `security()`.
-- **Child (`wRunner`).** The bootstrap script **always constructs a fresh
-  `new AdaptiveEngine()`** — regardless of what you bound in the parent — and uses
-  *its* `runner()` and `security()` to receive, verify, and run the task.
+The `Engine` lives entirely in **your process** (the parent). It is used to
+`serialize()` the task, choose the `transport()`, build the `launcher()`, resolve
+`binaryPath()`/`runnerPath()`, and sign the payload via `security()`. It is **not**
+shipped to the child and has **no child-side method** on its interface: running the
+task in the worker is the job of a separate
+[`AdaptiveRunner`](11-architecture.md), which the `wRunner` bootstrap constructs on
+its own. Engine (parent) and Runner (child) are independent — they don't reference
+each other; the only thing that crosses the boundary is the payload and a couple of
+CLI flags/env vars.
 
 Two consequences follow directly, and they explain the whole configuration model:
 
 1. **The secret reaches the child through the environment, not through your bound
    object.** When the parent's engine has a secret, the built-in
    [`CliLauncher`](11-architecture.md) injects it into the child's environment as
-   `WINTER_THREAD_SECRET`. The child's `AdaptiveEngine` reads that env var in its
-   `security()` and verifies the signature. So signing works even if the parent
-   used a `ManualEngine` with an explicit secret — the value is propagated for you.
-   (See [10. Security](10-security.md) for why env and not argv.)
+   `WINTER_THREAD_SECRET`. The child (`wRunner`) reads that env var **directly** to
+   build its verifier — so signing works even if the parent used a `ManualEngine`
+   with an explicit secret; the value is propagated for you. (See
+   [10. Security](10-security.md) for why env and not argv.)
 2. **The child picks its receiving transport from CLI options, not from your bound
    transport.** If a `--shmkey` option is present the child reads shared memory;
    otherwise it reads STDIN (which serves both the pipe and temp-file transports

@@ -7,8 +7,6 @@ namespace Flytachi\Winter\Thread\Engine;
 use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Payload\PayloadTransport;
-use Flytachi\Winter\Thread\Runner\ProcessRunner;
-use Flytachi\Winter\Thread\Runner\Runner;
 use Flytachi\Winter\Thread\ThreadException;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
@@ -105,10 +103,5 @@ final class ManualEngine implements Engine
         }
         $childEnv = $this->secret !== null ? ['WINTER_THREAD_SECRET' => $this->secret] : [];
         return new CliLauncher($this->binaryPath(), $this->runnerPath(), $this->transport(), $childEnv);
-    }
-
-    public function runner(): Runner
-    {
-        return new ProcessRunner($this);
     }
 }
