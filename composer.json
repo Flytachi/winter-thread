@@ -1,6 +1,6 @@
 {
     "name": "flytachi/winter-thread",
-    "description": "Object-oriented background process control for PHP — a Java-like threading model over OS processes.",
+    "description": "A lightweight process engine for PHP — Java-like control of background tasks as isolated OS processes, without heavy extensions (no swoole/pthreads/parallel).",
     "type": "library",
     "license": "MIT",
     "scripts": {
@@ -31,7 +31,7 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^13.1",
-        "squizlabs/php_codesniffer": "@stable"
+        "squizlabs/php_codesniffer": "^4.0"
     },
     "suggest": {
         "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)"
