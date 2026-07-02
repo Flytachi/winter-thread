@@ -85,7 +85,9 @@ final class CliLauncher implements Launcher
             $args[] = '--detach';
         }
         foreach ($staged->cliArgs as $cliArg) {
-            $args[] = $cliArg; // e.g. --shmkey=<int>, already safe
+            // Defense-in-depth: escape even though the only current cliArg is
+            // --shmkey=<int>. Never let a transport inject into the shell command.
+            $args[] = escapeshellarg($cliArg);
         }
         foreach ($spec->arguments as $key => $value) {
             if (!is_scalar($value) && !is_null($value)) {
