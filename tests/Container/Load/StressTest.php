@@ -26,9 +26,16 @@ class StressTest extends TestCase
         Thread::bindEngine(new AdaptiveEngine());
     }
 
+    private function fdCount(): string
+    {
+        return is_dir('/proc/self/fd') ? (string) count((array) glob('/proc/self/fd/*')) : 'n/a';
+    }
+
     public function testManyConcurrentThreadsCompleteCorrectly(): void
     {
         $count = 40;
+        $fdBefore = $this->fdCount();
+        $started = microtime(true);
 
         /** @var array<int, Thread> $threads */
         $threads = [];
@@ -45,11 +52,25 @@ class StressTest extends TestCase
             $this->assertSame(0, $thread->join(), 'every concurrent worker must exit cleanly');
         }
 
+        $elapsed = microtime(true) - $started;
+
         foreach ($outs as $out) {
             $this->assertSame('500500', (string) file_get_contents($out), 'each worker must compute the correct result');
             @unlink($out);
         }
 
-        $this->assertSame(0, $this->zombieChildCount(), 'no zombies after concurrency stress');
+        $zombies = $this->zombieChildCount();
+        $fdAfter = $this->fdCount();
+
+        fwrite(STDOUT, sprintf(
+            "\n  stress: %d concurrent workers in %.2fs; zombies=%d; open fds %s -> %s\n",
+            $count,
+            $elapsed,
+            $zombies,
+            $fdBefore,
+            $fdAfter,
+        ));
+
+        $this->assertSame(0, $zombies, 'no zombies after concurrency stress');
     }
 }
