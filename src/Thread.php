@@ -131,6 +131,21 @@ final class Thread
 
     private ?int $shmKey = null;
 
+    /**
+     * The exit code of the child process, captured the moment it is reaped
+     * (via join(), reap(), or __destruct()). Remains null until the process
+     * has terminated and been collected.
+     * @var int|null
+     */
+    private ?int $exitCode = null;
+
+    /**
+     * True once the process has been detached from this handle. A detached
+     * thread is no longer tracked or reaped by this object.
+     * @var bool
+     */
+    private bool $detached = false;
+
 
     /**
      * Constructs a new Thread instance.
@@ -353,6 +368,7 @@ final class Thread
             $status = proc_get_status($this->processHandle);
 
             if (!$status['running']) {
+                $this->exitCode = $status['exitcode'];
                 $this->closePipes();
                 proc_close($this->processHandle);
                 $this->processHandle = null;
@@ -360,7 +376,7 @@ final class Thread
                     $this->cleanupShm($this->shmKey);
                     $this->shmKey = null;
                 }
-                return $status['exitcode'];
+                return $this->exitCode;
             }
 
             if ($timeout > 0 && (time() - $startTime) >= $timeout) {
@@ -368,6 +384,113 @@ final class Thread
             }
 
             usleep(50_000); // 0.05 seconds
+        }
+    }
+
+    /**
+     * Non-blocking reap: checks whether the child has finished and, if so,
+     * collects its exit code and frees all associated OS resources.
+     *
+     * Unlike {@see join()}, this method never waits. Call it repeatedly in a
+     * management loop (e.g. a thread pool) to release finished processes
+     * without blocking on the ones still running. Reaping a finished process
+     * is what prevents it from lingering as a zombie in the process table.
+     *
+     * ```php
+     * // Pool loop: harvest completed workers without blocking on live ones.
+     * $running = array_filter($running, fn(Thread $t) => !$t->reap());
+     * ```
+     *
+     * @return bool True if the process has terminated and been reaped (or was
+     *              never running / already reaped / detached). False if it is
+     *              still running.
+     */
+    public function reap(): bool
+    {
+        if (!is_resource($this->processHandle)) {
+            return true;
+        }
+
+        $status = proc_get_status($this->processHandle);
+        if ($status['running']) {
+            return false;
+        }
+
+        // Capture the exit code from this first non-running status read;
+        // proc_close() on an already-terminated process returns immediately.
+        $this->exitCode = $status['exitcode'];
+        $this->closePipes();
+        proc_close($this->processHandle);
+        $this->processHandle = null;
+        if ($this->shmKey !== null) {
+            $this->cleanupShm($this->shmKey);
+            $this->shmKey = null;
+        }
+        return true;
+    }
+
+    /**
+     * Returns the exit code of the child process once it has been reaped.
+     *
+     * The value is populated by join(), reap(), or the destructor at the
+     * moment the process is collected.
+     *
+     * @return int|null The exit code, or null if the process has not yet
+     *                  terminated (or was never started).
+     */
+    public function getExitCode(): ?int
+    {
+        return $this->exitCode;
+    }
+
+    /**
+     * Detaches the child process from this handle.
+     *
+     * After detaching, this object stops tracking the process: join(), reap(),
+     * isAlive() and the signal methods will no longer operate on it, and the
+     * destructor will not attempt to reap it.
+     *
+     * WARNING: This does NOT daemonize the child. While the parent PHP process
+     * stays alive, a detached child that later exits becomes a zombie until the
+     * parent itself terminates, because nobody reaps it. Use detach() only for
+     * short-lived fire-and-forget tasks, or when the parent is about to exit.
+     * For long-lived parents prefer reap() in a management loop.
+     *
+     * Pipes are closed so the child is never blocked writing output. The raw
+     * proc_open handle is abandoned WITHOUT proc_close(), because proc_close()
+     * blocks until the child terminates.
+     *
+     * @return void
+     */
+    public function detach(): void
+    {
+        if (!is_resource($this->processHandle)) {
+            return;
+        }
+        $this->closePipes();
+        // Intentionally NOT calling proc_close(): it would block (waitpid) until
+        // the child exits. Abandoning the resource is non-blocking.
+        $this->processHandle = null;
+        $this->detached = true;
+    }
+
+    /**
+     * Reaps the process on object destruction to avoid leaking zombies.
+     *
+     * If the child has already finished, it is collected here (non-blocking).
+     * If it is still running, the handle is detached rather than closed, since
+     * proc_close() would block the parent; in that case the caller is
+     * responsible for having reaped, joined, killed, or detached it earlier.
+     */
+    public function __destruct()
+    {
+        if ($this->detached || !is_resource($this->processHandle)) {
+            return;
+        }
+        // reap() only closes the handle when the process has already exited,
+        // so this never blocks. A still-running process is left detached.
+        if (!$this->reap()) {
+            $this->detach();
         }
     }
 

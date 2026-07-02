@@ -169,6 +169,144 @@ class ThreadTest extends TestCase
         $thread->kill();
     }
 
+    // --- reap() / getExitCode() ---
+
+    public function testReapReturnsFalseWhileRunning(): void
+    {
+        $thread = new Thread(new SleepTask(30));
+        $thread->start();
+        $this->assertFalse($thread->reap());
+        $this->assertTrue($thread->isAlive());
+        $thread->kill();
+        $thread->join();
+    }
+
+    public function testReapReturnsTrueForNotStarted(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $this->assertTrue($thread->reap());
+    }
+
+    public function testReapReturnsTrueAfterProcessFinishes(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->start();
+        // Wait for the child to exit without reaping it.
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+        $this->assertTrue($thread->reap());
+        $this->assertFalse($thread->isAlive());
+    }
+
+    public function testReapCollectsZombie(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+
+        // Let the child exit. Until reaped it lingers as a zombie (state Z).
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+
+        $thread->reap();
+
+        // After reaping, the PID must no longer exist as a zombie.
+        $state = trim((string) shell_exec('ps -o state= -p ' . (int) $pid . ' 2>/dev/null'));
+        $this->assertStringStartsNotWith('Z', $state);
+    }
+
+    public function testGetExitCodeIsNullBeforeFinish(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $this->assertNull($thread->getExitCode());
+        $thread->start();
+        $this->assertNull($thread->getExitCode());
+        $thread->join();
+    }
+
+    public function testGetExitCodeAfterJoin(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->start();
+        $thread->join();
+        $this->assertSame(0, $thread->getExitCode());
+    }
+
+    public function testGetExitCodeAfterReap(): void
+    {
+        $thread = new Thread(new FailTask());
+        $thread->start();
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+        $thread->reap();
+        $this->assertNotSame(0, $thread->getExitCode());
+        $this->assertNotNull($thread->getExitCode());
+    }
+
+    public function testReapInPoolLoopHarvestsFinished(): void
+    {
+        // Mixed pool: some short, some long. reap() must release the short ones
+        // while the long ones keep running, all without blocking.
+        $running = [
+            new Thread(new SleepTask(0)),
+            new Thread(new SleepTask(0)),
+            new Thread(new SleepTask(30)),
+        ];
+        foreach ($running as $t) {
+            $t->start();
+        }
+
+        // Give the short tasks time to finish.
+        usleep(300_000);
+
+        $running = array_values(array_filter($running, fn(Thread $t) => !$t->reap()));
+
+        $this->assertCount(1, $running); // only the long-running one survives
+        $running[0]->kill();
+        $running[0]->join();
+    }
+
+    // --- detach() ---
+
+    public function testDetachStopsTracking(): void
+    {
+        $thread = new Thread(new SleepTask(1));
+        $thread->start();
+        $thread->detach();
+
+        // After detaching, the handle is gone: tracking methods report inactive.
+        $this->assertFalse($thread->isAlive());
+        $this->assertTrue($thread->reap());
+        $this->assertFalse($thread->kill());
+    }
+
+    public function testDetachOnNotStartedIsNoop(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $thread->detach();
+        $this->assertFalse($thread->isAlive());
+    }
+
+    // --- destructor ---
+
+    public function testDestructorReapsFinishedProcessWithoutZombie(): void
+    {
+        $thread = new Thread(new SleepTask(0));
+        $pid = $thread->start();
+        while ($thread->isAlive()) {
+            usleep(20_000);
+        }
+
+        // Drop the only reference: the destructor must reap the finished child.
+        unset($thread);
+        gc_collect_cycles();
+
+        $state = trim((string) shell_exec('ps -o state= -p ' . (int) $pid . ' 2>/dev/null'));
+        $this->assertStringStartsNotWith('Z', $state);
+    }
+
     // --- isAlive() ---
 
     public function testIsAliveReturnsFalseBeforeStart(): void
