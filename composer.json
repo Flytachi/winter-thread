@@ -8,7 +8,7 @@
         "test-detail": "phpunit --testdox",
         "test-base": "phpunit --testsuite base",
         "test-working": "phpunit --testsuite working",
-        "test-container": "phpunit --group container",
+        "test-container": "phpunit --testsuite container",
         "cs-check": "phpcs .",
         "cs-fix": "phpcbf ."
     },

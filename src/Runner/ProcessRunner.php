@@ -36,10 +36,17 @@ final class ProcessRunner implements Runner
         }
 
         $security = $this->engine->security();
-        if (function_exists('\Opis\Closure\serialize')) {
-            $runnable = \Opis\Closure\unserialize($payload, $security);
-        } else {
-            $runnable = unserialize($payload);
+        try {
+            if (function_exists('\Opis\Closure\serialize')) {
+                $runnable = \Opis\Closure\unserialize($payload, $security);
+            } else {
+                $runnable = unserialize($payload);
+            }
+        } catch (\Throwable $e) {
+            // Includes Opis SecurityException for unsigned/tampered payloads when a
+            // secret is configured — reject cleanly instead of a fatal error.
+            fwrite($this->stderr(), 'Error: failed to deserialize payload: ' . $e->getMessage() . "\n");
+            return 1;
         }
 
         if (!$runnable instanceof Runnable) {

@@ -18,5 +18,5 @@ services:
         composer install --no-interaction --no-progress
         echo "== default suite (base + working) =="
         composer test
-        echo "== container groups =="
-        vendor/bin/phpunit --group container
+        echo "== container suite (leak / timing / nested / workload) =="
+        vendor/bin/phpunit --testsuite container
