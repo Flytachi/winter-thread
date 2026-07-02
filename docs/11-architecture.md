@@ -1,4 +1,4 @@
-# 10. Architecture & Internals
+# 11. Architecture & Internals
 
 This chapter is for people building *on top of* the engine (pools, schedulers) or
 who simply want to know how it works. `Thread` is a thin facade; the real work is
@@ -20,10 +20,10 @@ engine) is the single most important internal fact:
 
 - the **secret** is propagated parent→child via the `WINTER_THREAD_SECRET`
   environment variable and read back by the child's engine (see
-  [9. Security](09-security.md));
+  [10. Security](10-security.md));
 - the **receiving transport** is chosen from CLI options (`--shmkey` → shm, else
   STDIN), not from the parent's transport object (see
-  [7. Payload Transports](07-payload-transports.md)).
+  [8. Payload Transports](08-payload-transports.md)).
 
 ## Component map
 
@@ -137,7 +137,7 @@ while ($handles !== []) {
 ```
 
 Because `reap()`/`detach()` are **non-blocking on live processes** (see
-[5. Process Control](05-process-control.md#the-non-blocking-guarantee)), a single
+[6. Process Control](06-process-control.md#the-non-blocking-guarantee)), a single
 loop can manage hundreds of workers efficiently: `proc_close` — the one blocking
 call — only ever runs on an already-dead process. To bound concurrency, launch in
 waves (keep at most *N* handles in flight and only launch more as slots free).

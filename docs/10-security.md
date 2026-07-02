@@ -1,4 +1,4 @@
-# 9. Security
+# 10. Security
 
 Winter Thread moves a **serialized** object from the parent into a worker, where
 it is deserialized and run. Deserialization of untrusted data is the classic
@@ -59,7 +59,7 @@ fatal.
 ### How the secret reaches the worker
 
 The worker is a **separate process** that reconstructs its own
-`new AdaptiveEngine()` (see [6. The Engine](06-the-engine.md)), so it needs the
+`new AdaptiveEngine()` (see [7. The Engine](07-the-engine.md)), so it needs the
 same secret to verify the signature. The built-in `CliLauncher` passes it through
 the child's **environment** (`WINTER_THREAD_SECRET`), **never through argv**. This
 distinction is deliberate and matters:

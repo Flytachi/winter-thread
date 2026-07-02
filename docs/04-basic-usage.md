@@ -1,4 +1,4 @@
-# 3. Basic Usage
+# 4. Basic Usage
 
 The core workflow: **define a task**, **wrap it in a `Thread`**, **start it**,
 and optionally **wait** for the result.
@@ -118,12 +118,12 @@ public function start(
 ```
 
 - `$arguments` — per-run values (below).
-- `$debugMode` — enable child-side error reporting (see [4. Output & Debugging](04-output-and-debugging.md)).
-- `$outputTarget` — where stdout/stderr go (see [4. Output & Debugging](04-output-and-debugging.md)).
-- `$detached` — daemonize for zombie-free fire-and-forget (see [8. Detached Mode](08-detached-mode.md)).
+- `$debugMode` — enable child-side error reporting (see [5. Output & Debugging](05-output-and-debugging.md)).
+- `$outputTarget` — where stdout/stderr go (see [5. Output & Debugging](05-output-and-debugging.md)).
+- `$detached` — daemonize for zombie-free fire-and-forget (see [9. Detached Mode](09-detached-mode.md)).
 
 Returns the launched process **PID** (`int`). Throws
-[`ThreadException`](11-api-reference.md#threadexception-class) if the process
+[`ThreadException`](14-api-reference.md#threadexception-class) if the process
 fails to start (e.g. `proc_open` denied, bad binary/runner path, or the process
 dies immediately).
 
@@ -193,7 +193,7 @@ if ($exit !== 0) {
 - `join(int $timeout = 0)` — waits up to `$timeout` **seconds** (`0` = forever).
   Returns `null` on timeout, `-1` if the thread was never started. Internally it
   polls process status every 50 ms.
-- If you never call `join()`/`reap()`, see [5. Process Control](05-process-control.md)
+- If you never call `join()`/`reap()`, see [6. Process Control](06-process-control.md)
   for how the engine still avoids leaving zombie processes behind.
 
 ## Fire-and-forget
@@ -206,7 +206,7 @@ new Thread(new SendWelcomeEmail($userId))->start();
 ```
 
 For a **long-lived** parent (FPM worker, daemon) that never joins, use
-[detached mode](08-detached-mode.md) so no zombie accumulates:
+[detached mode](09-detached-mode.md) so no zombie accumulates:
 
 ```php
 new Thread(new SendWelcomeEmail($userId))->start(detached: true);
@@ -223,5 +223,5 @@ new Thread(new SendWelcomeEmail($userId))->start(detached: true);
 
 The runner **always** catches exceptions from `run()` — it logs the message and
 trace to STDERR and exits non-zero — so failures are detectable via `join()` even
-without [debug mode](04-output-and-debugging.md). Where STDERR goes depends on
+without [debug mode](05-output-and-debugging.md). Where STDERR goes depends on
 your `$outputTarget`.

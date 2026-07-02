@@ -1,4 +1,4 @@
-# 4. Output & Debugging
+# 5. Output & Debugging
 
 A background process has nowhere to print by default. Winter Thread gives you
 three explicit output targets and a debug switch, chosen per `start()` call.
@@ -80,7 +80,7 @@ Notes:
 > subject to the same `SWOOLE_HOOK_ALL` fd corruption as the payload pipe. The
 > `AdaptiveEngine` fixes the *payload* transport automatically, but it cannot fix
 > output pipes you explicitly asked for. See
-> [7. Payload Transports](07-payload-transports.md#swoole--event-loop-compatibility).
+> [8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility).
 
 ## Debug mode
 

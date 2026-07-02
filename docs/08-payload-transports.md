@@ -1,4 +1,4 @@
-# 7. Payload Transports
+# 8. Payload Transports
 
 To run your task in another process, the engine must move the serialized
 `Runnable` from the parent to the child. That delivery is a pluggable
@@ -67,7 +67,7 @@ different one when:
 | Large payloads | streamed through the pipe buffer | file-sized | one contiguous segment sized to the payload |
 
 All three are correct for large payloads (a
-[dedicated test](12-testing.md) delivers a payload far larger than a pipe buffer
+[dedicated test](15-testing.md) delivers a payload far larger than a pipe buffer
 byte-for-byte); they differ only in mechanism and prerequisites.
 
 ## Swoole / event-loop compatibility
@@ -93,7 +93,7 @@ Two caveats remain under Swoole:
 1. **Output pipes.** The transport fix covers the *payload* (fd 0). If you start
    with `outputTarget: null`, the *output* pipes (fd 1/2) are subject to the same
    corruption. Prefer **file output** (a path, or `/dev/null`) under Swoole rather
-   than `null`. See [4. Output & Debugging](04-output-and-debugging.md).
+   than `null`. See [5. Output & Debugging](05-output-and-debugging.md).
 2. **Dispatch from a coroutine.** Swoole also hooks `proc_open` itself
    (`SWOOLE_HOOK_PROC`), which requires a coroutine context. Launch tasks from
    inside a coroutine — the normal case in a Swoole app.
@@ -124,7 +124,7 @@ cleanup:
 
 The launcher reads the `StagedPayload` **generically** — it doesn't know which
 transport produced it — which is what keeps transports fully pluggable. See
-[10. Architecture](10-architecture.md).
+[11. Architecture](11-architecture.md).
 
 ## Writing your own transport
 
@@ -136,4 +136,4 @@ Ideas: a Redis key, a TCP socket, or a named FIFO. Keep two things in mind:
   coordinate through what the `StagedPayload` carries onto the command line
   (CLI args) or through an out-of-band channel both sides can name.
 - Keep the delivery channel **private** (owner-only) — the payload is a serialized
-  object and is the deserialization trust boundary. See [9. Security](09-security.md).
+  object and is the deserialization trust boundary. See [10. Security](10-security.md).

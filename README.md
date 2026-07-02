@@ -203,16 +203,19 @@ Full documentation lives in [`/docs`](docs/README.md):
 
 1. [Introduction](docs/01-introduction.md) — philosophy, the no-heavy-ext story, when to use it
 2. [Installation & Requirements](docs/02-installation-and-requirements.md)
-3. [Basic Usage](docs/03-basic-usage.md)
-4. [Output & Debugging](docs/04-output-and-debugging.md)
-5. [Process Control & Lifecycle](docs/05-process-control.md)
-6. [The Engine](docs/06-the-engine.md)
-7. [Payload Transports](docs/07-payload-transports.md)
-8. [Detached Mode](docs/08-detached-mode.md)
-9. [Security](docs/09-security.md)
-10. [Architecture & Internals](docs/10-architecture.md)
-11. [API Reference](docs/11-api-reference.md)
-12. [Testing](docs/12-testing.md)
+3. [Quickstart](docs/03-quickstart.md) — a complete parallel example in 5 minutes
+4. [Basic Usage](docs/04-basic-usage.md)
+5. [Output & Debugging](docs/05-output-and-debugging.md)
+6. [Process Control & Lifecycle](docs/06-process-control.md) — signals, graceful shutdown
+7. [The Engine](docs/07-the-engine.md)
+8. [Payload Transports](docs/08-payload-transports.md)
+9. [Detached Mode](docs/09-detached-mode.md)
+10. [Security](docs/10-security.md)
+11. [Architecture & Internals](docs/11-architecture.md)
+12. [Patterns](docs/12-patterns.md) — pools, returning results, retries
+13. [Troubleshooting](docs/13-troubleshooting.md)
+14. [API Reference](docs/14-api-reference.md)
+15. [Testing](docs/15-testing.md)
 
 ## Contributing
 

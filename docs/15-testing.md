@@ -1,4 +1,4 @@
-# 12. Testing
+# 15. Testing
 
 The test suite is organized in **two tiers**, mirroring the `winter-kernel`
 layout: a **default** tier that runs anywhere, and a **container** tier for heavy,
@@ -83,7 +83,7 @@ serializable named classes to survive the process boundary cleanly).
 
 `tests/docker/Dockerfile` builds `php:<version>-cli` with `pcntl`, `posix`,
 `shmop`, and `swoole` (plus `procps` for `ps` / `/proc`). The compose file runs the
-container with `init: true` so [detached](08-detached-mode.md) workers are reaped
+container with `init: true` so [detached](09-detached-mode.md) workers are reaped
 by tini — matching the production guidance for containers.
 
 ## Continuous integration

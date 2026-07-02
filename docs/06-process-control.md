@@ -1,4 +1,4 @@
-# 5. Process Control & Lifecycle
+# 6. Process Control & Lifecycle
 
 Once a task is running you have full control over it: query its state, send
 signals, wait for it, or explicitly release it. This chapter is precise about
@@ -38,7 +38,7 @@ $thread->getExitCode();  // ?int  — exit code once reaped, else null
 Exact semantics:
 
 - **`getPid()`** returns the launched PID after `start()`, `null` before. Note in
-  [detached mode](08-detached-mode.md) this is the *launcher's* ephemeral PID, not
+  [detached mode](09-detached-mode.md) this is the *launcher's* ephemeral PID, not
   the real worker's.
 - **`isAlive()`** reflects live process status (`proc_get_status`). It becomes
   `false` once the child exits, and also once you `detach()` (you're no longer
@@ -76,12 +76,72 @@ Guidance:
   an unrelated PID.
 
 For signalling by **raw PID** (e.g. a supervisor acting on a PID persisted
-elsewhere, or a [detached worker's](08-detached-mode.md) self-reported PID), use
+elsewhere, or a [detached worker's](09-detached-mode.md) self-reported PID), use
 the [`Signal`](../src/Signal.php) helper. It detects **zombie** processes
 correctly across Linux (`/proc/<pid>/status`) and macOS (`ps`), so a
 not-yet-reaped dead process is reported as *not running* — see the
-[API reference](11-api-reference.md#signal-final-class). Be aware of PID reuse:
+[API reference](14-api-reference.md#signal-final-class). Be aware of PID reuse:
 only act on freshly obtained PIDs.
+
+### Handling signals inside a task (graceful shutdown)
+
+By default SIGTERM, SIGINT, and SIGHUP already **terminate** the worker — so
+`terminate()`, `interrupt()`, `close()`, and `kill()` stop a task out of the box,
+with **no signal code in `run()` at all** (the [test suite](15-testing.md) verifies
+this against a plain `sleep()` task). You only add a handler when you want a
+**graceful** stop: catch the signal, flush/checkpoint/release, and exit cleanly
+instead of being killed abruptly mid-work. It is optional, lives **inside your
+task**, and needs `ext-pcntl`:
+
+```php
+final class ImportRows implements Runnable
+{
+    public function run(array $args): void
+    {
+        $stop = false;
+
+        // Deliver pending signals between PHP statements (no manual pcntl_signal_dispatch()).
+        pcntl_async_signals(true);
+        pcntl_signal(SIGTERM, function () use (&$stop) { $stop = true; });
+        pcntl_signal(SIGINT,  function () use (&$stop) { $stop = true; });
+
+        foreach ($this->rows() as $row) {
+            if ($stop) {
+                $this->checkpoint();      // flush progress, release locks…
+                return;                   // clean exit → exit code 0
+            }
+            $this->process($row);
+        }
+    }
+}
+```
+
+Now the parent can ask for a graceful stop and confirm it landed:
+
+```php
+$thread->terminate();          // SIGTERM → the handler sets $stop = true
+$exit = $thread->join(5);      // give it up to 5s to checkpoint and exit
+if ($exit === null) {
+    $thread->kill();           // it ignored us / is stuck → force it
+    $thread->join();
+}
+```
+
+Key points:
+
+- **Without a handler the worker still stops** — the signal's default action
+  terminates it, just *abruptly*: no cleanup, and the exit is signal-based (a
+  non-zero code), not `0`. A handler only changes *how* it stops, not *whether*.
+- **`pcntl_async_signals(true)`** is the modern way — handlers fire between
+  statements without you calling `pcntl_signal_dispatch()` in the loop. It requires
+  `ext-pcntl` (already a dependency).
+- **SIGKILL (`kill()`) and SIGSTOP (`pause()`) cannot be handled** — no cleanup is
+  possible. Design cleanup around SIGTERM; keep SIGKILL as the last resort.
+- **Blocking C calls** (a long `sleep()`, a synchronous DB query) only see the
+  signal when they return. For tight responsiveness, break long waits into short
+  chunks and re-check your stop flag.
+- A handler that finishes `run()` normally yields **exit code 0**; throw from it if
+  you want the run recorded as failed.
 
 ## Waiting: `join()`
 
@@ -150,7 +210,7 @@ resource **without** calling the blocking `proc_close`.
 $thread->detach(); // "I no longer care about this one"
 ```
 
-⚠️ **`detach()` is not the same as [detached mode](08-detached-mode.md).** Use it
+⚠️ **`detach()` is not the same as [detached mode](09-detached-mode.md).** Use it
 for short-lived fire-and-forget where the parent exits soon. A detached *live*
 process, if it later exits under a **long-lived** parent, becomes a **zombie**
 until that parent exits — because nothing calls `wait()` on it. For a long-lived
@@ -189,5 +249,5 @@ will stall your loop.
 
 This is precisely what lets a pool poll hundreds of workers in one tight loop
 without any of them holding the loop hostage. See
-[10. Architecture](10-architecture.md#building-a-pool-on-launcher--processhandle)
+[11. Architecture](11-architecture.md#building-a-pool-on-launcher--processhandle)
 for a complete pool example built on this guarantee.

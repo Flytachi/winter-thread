@@ -1,4 +1,4 @@
-# 8. Detached Mode
+# 9. Detached Mode
 
 Detached mode makes fire-and-forget **zombie-free** under a long-lived parent
 (an FPM worker, a daemon). Pass `detached: true` to `start()`:
@@ -8,7 +8,7 @@ $thread = new Thread(new SendEmailBatch($ids));
 $thread->start(detached: true);   // returns at once; you never join it
 ```
 
-> Don't confuse this with [`detach()`](05-process-control.md#giving-up-ownership-detach):
+> Don't confuse this with [`detach()`](06-process-control.md#giving-up-ownership-detach):
 > `detach()` *abandons tracking* of an ordinary child (which can still become a
 > zombie under a long-lived parent); **detached mode** *re-parents* the worker to
 > init so it is always reaped. They solve different problems — see

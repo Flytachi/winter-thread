@@ -1,4 +1,4 @@
-# 6. The Engine
+# 7. The Engine
 
 Everything configurable lives behind a single abstraction: the
 [`Engine`](../src/Engine/Engine.php). It decides *how* a task is delivered and
@@ -48,11 +48,11 @@ Two consequences follow directly, and they explain the whole configuration model
 
 1. **The secret reaches the child through the environment, not through your bound
    object.** When the parent's engine has a secret, the built-in
-   [`CliLauncher`](10-architecture.md) injects it into the child's environment as
+   [`CliLauncher`](11-architecture.md) injects it into the child's environment as
    `WINTER_THREAD_SECRET`. The child's `AdaptiveEngine` reads that env var in its
    `security()` and verifies the signature. So signing works even if the parent
    used a `ManualEngine` with an explicit secret — the value is propagated for you.
-   (See [9. Security](09-security.md) for why env and not argv.)
+   (See [10. Security](10-security.md) for why env and not argv.)
 2. **The child picks its receiving transport from CLI options, not from your bound
    transport.** If a `--shmkey` option is present the child reads shared memory;
    otherwise it reads STDIN (which serves both the pipe and temp-file transports
@@ -84,11 +84,11 @@ What it resolves, exactly:
 
 - **Secret** — the explicit `secret` argument, else the `WINTER_THREAD_SECRET`
   environment variable, else `null` (no signing).
-- **Transport** — [`TempFileTransport`](07-payload-transports.md) **only when a
+- **Transport** — [`TempFileTransport`](08-payload-transports.md) **only when a
   Swoole runtime is active** — detected as being inside a coroutine
   (`\Swoole\Coroutine::getCid() !== -1`) *or* with runtime hooks enabled
   (`\Swoole\Runtime::getHookFlags() !== 0`) — otherwise
-  [`PipeTransport`](07-payload-transports.md). If the `swoole` extension isn't
+  [`PipeTransport`](08-payload-transports.md). If the `swoole` extension isn't
   loaded at all, it's always Pipe.
 - **Binary path** — under a CLI SAPI (`cli`/`cli-server`) it uses `PHP_BINARY`
   (the running interpreter); under a non-CLI SAPI (FPM/CGI) it resolves
@@ -153,7 +153,7 @@ new AdaptiveEngine(launcher: new MySshLauncher(/* host, key, … */));
 Interfaces are the only extension points that need implementing (`Engine`,
 `Launcher`, `Runner`, `PayloadTransport`); `ProcessHandle` and `LaunchSpec` are
 concrete value/handle types you consume, not implement. See
-[10. Architecture](10-architecture.md).
+[11. Architecture](11-architecture.md).
 
 ## Accessing the engine directly
 

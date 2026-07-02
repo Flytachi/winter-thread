@@ -30,9 +30,9 @@ $thread->join();           // optionally wait for the exit code
 
 ### What actually happens on `start()`
 
-1. The `Runnable` is serialized with [`opis/closure`](09-security.md) (optionally
+1. The `Runnable` is serialized with [`opis/closure`](10-security.md) (optionally
    HMAC-signed).
-2. A [payload transport](07-payload-transports.md) *stages* those bytes for
+2. A [payload transport](08-payload-transports.md) *stages* those bytes for
    delivery (stdin pipe by default).
 3. The engine builds a shell-escaped command like
    `php <path>/wRunner --namespace=… --name=…` and runs it through `proc_open`.
@@ -64,9 +64,9 @@ one of the heavyweight options:
 - **`opis/closure`** — a pure-PHP Composer package for safe serialization.
 
 `ext-shmop` is *optional* and only needed for the [shared-memory
-transport](07-payload-transports.md). There is no ZTS requirement, no event loop,
+transport](08-payload-transports.md). There is no ZTS requirement, no event loop,
 no exotic runtime. **If your PHP can call `proc_open`, the engine works** — and it
-[coexists with Swoole](07-payload-transports.md#swoole--event-loop-compatibility)
+[coexists with Swoole](08-payload-transports.md#swoole--event-loop-compatibility)
 when you do run one.
 
 ## Why processes instead of threads
@@ -81,7 +81,7 @@ PHP has no safe shared-memory threads. Winter Thread embraces that and spawns
   process duplicate it — including open PDO/Redis file descriptors, which break in
   subtle ways when a child closes them. A fresh `proc_open` process simply doesn't
   have them. (Detached mode *does* use one `fork`, but inside the already-clean
-  worker — never your app; see [8. Detached Mode](08-detached-mode.md).)
+  worker — never your app; see [9. Detached Mode](09-detached-mode.md).)
 - **Runs where you run.** Because it is just `proc_open`, tasks can be launched
   from a CLI worker, a daemon, or even inside a PHP-FPM web request (where
   `proc_open` is permitted).
@@ -93,9 +93,9 @@ PHP has no safe shared-memory threads. Winter Thread embraces that and spawns
   and `getExitCode()`.
 - **Pluggable payload transports** (pipe / temp-file / shared-memory) with
   automatic selection under Swoole.
-- **Zombie-free fire-and-forget** via an optional [detached mode](08-detached-mode.md).
+- **Zombie-free fire-and-forget** via an optional [detached mode](09-detached-mode.md).
 - **Signed serialization** to defend against payload tampering / object injection.
-- A **pluggable [`Engine`](06-the-engine.md)** so you can swap transport, launcher,
+- A **pluggable [`Engine`](07-the-engine.md)** so you can swap transport, launcher,
   or the child-side runner — and build custom backends (Docker, SSH, …) — without
   touching `Thread`.
 - A **non-blocking control model** (`reap()`/`detach()` never stall on a live
@@ -127,13 +127,16 @@ PHP has no safe shared-memory threads. Winter Thread embraces that and spawns
 ## Where to next
 
 - [2. Installation & Requirements](02-installation-and-requirements.md)
-- [3. Basic Usage](03-basic-usage.md)
-- [4. Output & Debugging](04-output-and-debugging.md)
-- [5. Process Control & Lifecycle](05-process-control.md)
-- [6. The Engine](06-the-engine.md)
-- [7. Payload Transports](07-payload-transports.md)
-- [8. Detached Mode](08-detached-mode.md)
-- [9. Security](09-security.md)
-- [10. Architecture & Internals](10-architecture.md)
-- [11. API Reference](11-api-reference.md)
-- [12. Testing](12-testing.md)
+- [3. Quickstart](03-quickstart.md) — a complete parallel example in 5 minutes
+- [4. Basic Usage](04-basic-usage.md)
+- [5. Output & Debugging](05-output-and-debugging.md)
+- [6. Process Control & Lifecycle](06-process-control.md)
+- [7. The Engine](07-the-engine.md)
+- [8. Payload Transports](08-payload-transports.md)
+- [9. Detached Mode](09-detached-mode.md)
+- [10. Security](10-security.md)
+- [11. Architecture & Internals](11-architecture.md)
+- [12. Patterns](12-patterns.md) — pools, returning results, retries
+- [13. Troubleshooting](13-troubleshooting.md)
+- [14. API Reference](14-api-reference.md)
+- [15. Testing](15-testing.md)
