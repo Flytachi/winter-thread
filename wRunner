@@ -26,4 +26,4 @@ if (isset($options['debug'])) {
     ini_set('display_startup_errors', 0);
 }
 
-exit((new AdaptiveEngine())->runner()->execute($options));
+exit(new AdaptiveEngine()->runner()->execute($options));
