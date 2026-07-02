@@ -6,6 +6,12 @@ namespace Flytachi\Winter\Thread\Payload;
 
 use Flytachi\Winter\Thread\ThreadException;
 
+/**
+ * Delivers the payload through a System V shared-memory segment (RAM only). The
+ * segment is allocated `0600` and its key is passed to the child via `--shmkey`;
+ * the child reads and deletes it. Uses no pipe or temp file — safe under Swoole
+ * `SWOOLE_HOOK_ALL`, at the cost of requiring `ext-shmop`.
+ */
 final class ShmTransport implements PayloadTransport
 {
     private static int $seq = 0;

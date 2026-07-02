@@ -12,6 +12,27 @@ use Flytachi\Winter\Thread\Runner\Runner;
 use Flytachi\Winter\Thread\ThreadException;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
+/**
+ * Explicit, clean-slate engine — configured entirely through immutable withers.
+ *
+ * Unlike {@see AdaptiveEngine} it detects nothing: each part must be set, and any
+ * required part left unset throws {@see \Flytachi\Winter\Thread\ThreadException}
+ * when accessed. This makes behavior fully predictable, with no environment magic.
+ *
+ * ```php
+ * Thread::bindEngine(
+ *     (new ManualEngine())
+ *         ->withTransport(new TempFileTransport())
+ *         ->withBinaryPath('/usr/bin/php')
+ *         ->withRunnerPath(__DIR__ . '/vendor/flytachi/winter-thread/wRunner')
+ *         ->withSecurity('your-signing-secret')
+ *         ->withLauncher(new MyCustomLauncher()) // optional: custom backend
+ * );
+ * ```
+ *
+ * @see Engine
+ * @see AdaptiveEngine
+ */
 final class ManualEngine implements Engine
 {
     private ?PayloadTransport $transport = null;

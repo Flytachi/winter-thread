@@ -13,6 +13,28 @@ use Flytachi\Winter\Thread\Runner\ProcessRunner;
 use Flytachi\Winter\Thread\Runner\Runner;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
+/**
+ * Self-configuring engine — the default when no engine is bound.
+ *
+ * At construction it detects the environment and picks sensible defaults, all of
+ * which can be overridden through the constructor:
+ * - transport: {@see TempFileTransport} when a Swoole runtime is active (coroutine
+ *   or hooks enabled), otherwise {@see PipeTransport};
+ * - binary path: the real PHP CLI binary (resolves correctly even under FPM/CGI);
+ * - runner path: the packaged `wRunner`;
+ * - secret: the explicit argument, else the `WINTER_THREAD_SECRET` env var, else none.
+ *
+ * ```php
+ * // Zero-config — nothing to do; this is already the default.
+ * $thread = new Thread(new MyTask());
+ *
+ * // Optional overrides:
+ * new AdaptiveEngine(secret: 'k', transport: new ShmTransport(), launcher: new MyLauncher());
+ * ```
+ *
+ * @see Engine
+ * @see ManualEngine
+ */
 final class AdaptiveEngine implements Engine
 {
     private readonly ?string $secret;

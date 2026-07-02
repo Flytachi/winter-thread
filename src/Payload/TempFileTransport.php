@@ -6,6 +6,14 @@ namespace Flytachi\Winter\Thread\Payload;
 
 use Flytachi\Winter\Thread\ThreadException;
 
+/**
+ * Delivers the payload through a temporary file placed on the child's stdin. The
+ * file is created with `0600` permissions and unlinked immediately after the
+ * process starts (the child keeps its open fd), so nothing lingers on disk.
+ *
+ * Uses no pipe file descriptors, which makes it safe under Swoole
+ * `SWOOLE_HOOK_ALL`. Requires no extension.
+ */
 final class TempFileTransport implements PayloadTransport
 {
     public function stage(string $payload): StagedPayload
