@@ -41,8 +41,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build test image (pcntl/posix/shmop/swoole)
-        run: docker build -f tests/docker/Dockerfile --build-arg PHP_VERSION=${{ matrix.php }} -t wt-test:${{ matrix.php }} .
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image (cached; pcntl/posix/shmop/swoole)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tests/docker/Dockerfile
+          build-args: PHP_VERSION=${{ matrix.php }}
+          tags: wt-test:${{ matrix.php }}
+          load: true
+          cache-from: type=gha,scope=wt-${{ matrix.php }}
+          cache-to: type=gha,mode=max,scope=wt-${{ matrix.php }}
 
       - name: Run default + container suites
         run: |
