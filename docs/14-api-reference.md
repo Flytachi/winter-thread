@@ -156,8 +156,8 @@ must install a handler; see
 
 | Method | Returns | Description |
 |---|---|---|
-| `readOutput()` | `string` | STDOUT available right now (non-blocking); `''` if none / not piped |
-| `readError()` | `string` | STDERR available right now (non-blocking); `''` if none / not piped |
+| `readOutput()` | `string` | STDOUT received since the last call (consuming, non-blocking); `''` if none / not piped. Buffered by `join()`/`reap()`, so it still returns the full output *after* the process has finished |
+| `readError()` | `string` | STDERR received since the last call (consuming, non-blocking); `''` if none / not piped |
 
 #### Metadata
 
@@ -284,12 +284,12 @@ constructed directly — obtained from `Launcher::launch()`.
 |---|---|---|
 | `getPid()` | `int` | the process PID |
 | `isAlive()` | `bool` | is the process running now? |
-| `join(int $timeout = 0)` | `?int` | block until exit; exit code, `null` on timeout (seconds), or `exitCode`/`-1` if the resource is already gone |
-| `reap()` | `bool` | non-blocking; `true` if finished (and reaped) |
+| `join(int $timeout = 0)` | `?int` | block until exit; **drains the STDOUT/STDERR pipes while waiting**; exit code, `null` on timeout (seconds), or `exitCode`/`-1` if the resource is already gone |
+| `reap()` | `bool` | non-blocking; **drains the STDOUT/STDERR pipes**; `true` if finished (and reaped) |
 | `detach()` | `void` | stop tracking; closes pipes, **no** `proc_close`, no transport cleanup (the child owns it) |
 | `getExitCode()` | `?int` | exit code once reaped; `null` after `detach()` |
-| `readOutput()` | `string` | non-blocking STDOUT; `''` if no output pipe |
-| `readError()` | `string` | non-blocking STDERR; `''` if no output pipe |
+| `readOutput()` | `string` | consuming STDOUT (bytes since the last call, non-blocking); `''` if no output pipe |
+| `readError()` | `string` | consuming STDERR (bytes since the last call, non-blocking); `''` if no output pipe |
 | `signal(int $signal)` | `bool` | `posix_kill(pid, signal)` — only if alive; `false` otherwise |
 
 `reap()`, `detach()` and `__destruct()` are **non-blocking on a live process**; the

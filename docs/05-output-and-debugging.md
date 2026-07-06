@@ -38,50 +38,56 @@ A few exact behaviors worth knowing:
 
 ### Why `/dev/null` is the default
 
-When output goes to a pipe (`null`) but nobody reads it, the OS pipe buffer
-(typically ~64 KB) fills up and the child's next write **blocks indefinitely** —
-or the child receives a *Broken pipe* and dies silently. Either way your
-"fire-and-forget" job stalls or vanishes with no trace.
+When output goes to a pipe (`null`) that nobody reads — *and* nobody `join()`s or
+`reap()`s (both drain it for you) — the OS pipe buffer (typically ~64 KB) fills up
+and the child's next write **blocks indefinitely**, or the child receives a
+*Broken pipe* and dies silently. Either way your "fire-and-forget" job stalls or
+vanishes with no trace.
 
 Defaulting to `/dev/null` means fire-and-forget jobs can **never** hit this: there
-is no pipe, so there is nothing to fill. Only choose `null` when the parent
-actively drains the pipe in a loop; choose a **file** when you want the output but
-aren't going to read it live.
+is no pipe, so there is nothing to fill. Choose `null` when you want to read the
+output; choose a **file** when you want it persisted but aren't going to read it live.
 
 ## Reading piped output
 
-With `outputTarget: null`, the parent gets two **non-blocking** pipes. Poll them
-while the process runs, then drain the tail after it exits:
+With `outputTarget: null`, the parent gets two **non-blocking** pipes. The simplest
+correct usage is a bare `join()` followed by a read — `join()` (and `reap()`) drain
+the pipes for you while they wait, so the child can never stall on a full buffer:
+
+```php
+$thread->start(outputTarget: null);
+
+$exit = $thread->join();          // drains the pipes internally while waiting
+$out  = $thread->readOutput();    // full STDOUT, buffered during the join
+$err  = $thread->readError();     // full STDERR
+```
+
+You only need an explicit poll loop when you want the output **live**, as it is
+produced (progress bars, streaming logs):
 
 ```php
 $thread->start(outputTarget: null);
 
 $out = '';
 while ($thread->isAlive()) {
-    $out .= $thread->readOutput();   // returns whatever is buffered right now
+    $out .= $thread->readOutput();   // returns whatever arrived since the last call
     usleep(10_000);                  // 10 ms — don't busy-spin
 }
-$out .= $thread->readOutput();       // drain anything written just before exit
+$out .= $thread->readOutput();       // tail written just before exit
 $thread->join();                     // reap and collect the exit code
 ```
 
 Notes:
 
-- `readOutput()` / `readError()` return **whatever is currently available** (they
-  never block); an empty string means "nothing new yet", not "done".
-- Read the **tail after the loop** — the worker may write right before exiting.
-- These methods return `''` if you started with a file or `/dev/null` target
-  (there is no pipe to read), and `''` after the handle is reaped or detached.
+- `readOutput()` / `readError()` are **consuming**: each call returns the bytes that
+  arrived since the previous call and never blocks. An empty string means "nothing
+  new yet", not "done" — concatenate across calls as above.
+- A bare `join()`/`reap()` handles the draining for you; after it returns,
+  `readOutput()` still hands you everything the child wrote (it was buffered during
+  the wait, not lost when the pipes closed).
+- These methods return `''` if you started with a file or `/dev/null` target (there
+  is no pipe to read), and `''` once the handle is detached.
 
-> **Important:** never pass `null` unless you drain the pipe in a loop like this.
-> A slow or absent reader is exactly the Broken-pipe stall described above.
->
-> **In particular, `null` + a bare `join()` can deadlock.** `join()` waits for the
-> child to exit but does **not** read the pipes. If the child writes more than the
-> ~64 KB buffer, it blocks on `write()` and never exits — so `join()` waits forever.
-> Always drain in the loop *before* `join()` (as above), or use a file/`/dev/null`
-> target when you won't read.
->
 > **Under Swoole**, prefer file output over `null` — the output pipes (fd 1/2) are
 > subject to the same `SWOOLE_HOOK_ALL` fd corruption as the payload pipe. The
 > `AdaptiveEngine` fixes the *payload* transport automatically, but it cannot fix

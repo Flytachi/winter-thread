@@ -10,8 +10,9 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Basic detached-mode operability: the ephemeral launcher exits immediately
- * (reaped by join), and the real worker is reparented to init (ppid == 1),
- * so a long-lived parent never accumulates a zombie.
+ * (reaped by join), and the real worker is reparented away from our process tree
+ * (to init, or to the nearest child-subreaper), so a long-lived parent never
+ * accumulates a zombie.
  */
 class DetachedTest extends TestCase
 {
@@ -37,8 +38,23 @@ class DetachedTest extends TestCase
         $this->assertGreaterThan(0, $workerPid);
         $this->assertNotSame($launcherPid, $workerPid);
 
+        // The detached worker must be reparented OFF our process tree so the parent
+        // never accumulates a zombie. The new parent is PID 1 (init) on a plain
+        // system, or the nearest PR_SET_CHILD_SUBREAPER ancestor (e.g. `systemd
+        // --user`, which owns most desktop login sessions) — so we assert it left,
+        // not that it landed on a specific PID.
         $ppid = trim((string) shell_exec('ps -o ppid= -p ' . $workerPid . ' 2>/dev/null'));
-        $this->assertSame('1', $ppid, 'detached worker should be reparented to init (pid 1)');
+        $this->assertNotSame('', $ppid, 'worker process should still exist to be inspected');
+        $this->assertNotSame(
+            (string) $launcherPid,
+            $ppid,
+            'detached worker must be reparented away from its ephemeral launcher',
+        );
+        $this->assertNotSame(
+            (string) getmypid(),
+            $ppid,
+            'detached worker must not remain a child of the dispatching (parent) process',
+        );
 
         @unlink($pidFile);
     }

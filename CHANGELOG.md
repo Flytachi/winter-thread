@@ -6,7 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **`join()`/`reap()` now drain the child's STDOUT/STDERR pipes while they wait.**
+  With `outputTarget: null`, a child that wrote more than the OS pipe buffer
+  (~64 KB) could block on `write()` and never exit, so a bare `join()` (without a
+  manual drain loop) deadlocked. Draining is now handled inside `ProcessHandle`,
+  eliminating the whole class of hang.
+- **`readOutput()` / `readError()` after `join()` now return the full output**
+  instead of `''`. Output is buffered during the wait, so it survives the pipes
+  being closed on completion. The methods are now *consuming* (each call returns
+  the bytes received since the previous call), so incremental poll loops are
+  unaffected.
+
+### Documentation
+- Lead the README and Introduction with a clearer framing: Winter Thread is an
+  **engine** — the foundation queues/pools/schedulers are built on — and a `Thread`
+  is an isolated **OS process** wearing a familiar thread-like API (à la Python's
+  `multiprocessing.Process`), not a real in-process PHP thread.
 
 ## [2.0.0] - 2026-07-03
 

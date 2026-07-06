@@ -185,6 +185,10 @@ final class Thread
 
     /**
      * Reads STDOUT (only when started with $outputTarget = null).
+     *
+     * Consuming: returns the bytes received since the previous call. join()/reap()
+     * buffer the pipe internally, so this still returns the full output after the
+     * process has been joined/reaped. Returns '' for a file/'/dev/null' target.
      */
     public function readOutput(): string
     {
@@ -193,6 +197,8 @@ final class Thread
 
     /**
      * Reads STDERR (only when started with $outputTarget = null).
+     *
+     * Consuming: returns the bytes received since the previous call. See {@see readOutput()}.
      */
     public function readError(): string
     {

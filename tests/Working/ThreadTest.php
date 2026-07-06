@@ -13,6 +13,7 @@ use Flytachi\Winter\Thread\Thread;
 use Flytachi\Winter\Thread\Tests\Fixtures\ArgsTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\EchoTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\FailTask;
+use Flytachi\Winter\Thread\Tests\Fixtures\FloodTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\SleepTask;
 use PHPUnit\Framework\TestCase;
 
@@ -491,6 +492,67 @@ class ThreadTest extends TestCase
         $thread->join();
         $this->assertSame('', $thread->readOutput());
         $this->assertSame('', $thread->readError());
+    }
+
+    // --- Large piped output: join()/reap() must drain, never deadlock ---
+
+    public function testBareJoinDrainsLargeOutputWithoutDeadlock(): void
+    {
+        // 512 KB of STDOUT with outputTarget: null and NO manual drain loop.
+        // Before draining was moved into join(), this deadlocked forever.
+        $bytes = 512 * 1024;
+        $thread = new Thread(new FloodTask($bytes));
+        $thread->start(outputTarget: null);
+
+        $exit = $thread->join(timeout: 30);
+
+        $this->assertSame(0, $exit, 'bare join() must complete on a child that floods the pipe');
+        $this->assertSame($bytes, substr_count($thread->readOutput(), 'A'), 'every byte must survive');
+    }
+
+    public function testReadOutputAfterJoinReturnsFullOutput(): void
+    {
+        // readOutput() after a bare join() now returns the buffered output instead of ''.
+        $bytes = 128 * 1024;
+        $thread = new Thread(new FloodTask($bytes));
+        $thread->start(outputTarget: null);
+        $this->assertSame(0, $thread->join(timeout: 30));
+
+        $this->assertSame($bytes, substr_count($thread->readOutput(), 'A'));
+    }
+
+    public function testReapPollingDrainsLargeOutput(): void
+    {
+        // A pool that only ever polls reap() (never join()) must also drain the pipe,
+        // or a chatty worker deadlocks on a full buffer and reap() never returns true.
+        $bytes = 256 * 1024;
+        $thread = new Thread(new FloodTask($bytes));
+        $thread->start(outputTarget: null);
+
+        $collected = '';
+        $deadline = microtime(true) + 30;
+        while (!$thread->reap()) {
+            $collected .= $thread->readOutput();
+            if (microtime(true) > $deadline) {
+                $thread->kill();
+                $this->fail('reap() polling did not drain the pipe; the child deadlocked');
+            }
+            usleep(10_000);
+        }
+        $collected .= $thread->readOutput();
+
+        $this->assertSame($bytes, substr_count($collected, 'A'));
+    }
+
+    public function testBareJoinDrainsLargeStderrWithoutDeadlock(): void
+    {
+        // STDERR is a separate pipe and can deadlock the same way; join() drains both.
+        $bytes = 256 * 1024;
+        $thread = new Thread(new FloodTask($bytes, toStderr: true));
+        $thread->start(outputTarget: null);
+
+        $this->assertSame(0, $thread->join(timeout: 30));
+        $this->assertSame($bytes, substr_count($thread->readError(), 'E'));
     }
 
     // --- Payload transport (engine-driven) ---

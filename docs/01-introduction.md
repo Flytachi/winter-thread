@@ -1,12 +1,22 @@
 # 1. Introduction
 
-**Winter Thread** is a *process engine* for PHP: an object-oriented, Java-like API
-for running and controlling background tasks as isolated OS processes.
+**Winter Thread** is a *process engine* for PHP: a clean, object-oriented,
+Java-like API for running and controlling background tasks as isolated OS
+processes.
 
-It is deliberately a **low-level engine** — a small, dependable core you build
-higher-level concurrency on (pools, queues, schedulers, workers), rather than a
-batteries-included framework. It gives you clean primitives and stays out of your
-way.
+> **It's an engine — the foundation you build on.**
+> Winter Thread is intentionally a small, dependable *core*, not a
+> batteries-included framework. It gives you rock-solid primitives and stays out of
+> your way — the layer your **queues, pools, schedulers and workers** are built
+> *on top of*. You bring the higher-level concurrency; the engine handles the hard,
+> boring parts (spawning, signals, isolation, transports) flawlessly.
+>
+> **And a `Thread` here is a *process*, not a PHP thread.** The name is a deliberate
+> nod to a familiar API — exactly the way Python's `multiprocessing.Process` mirrors
+> its threading interface. Every `Thread` you start is one **fully isolated OS
+> process** wearing a clean, thread-like face (`start()`, `join()`, `isAlive()`).
+> There are no shared-memory threads running inside your PHP process — which is
+> precisely why there's nothing to corrupt and nothing to leak between tasks.
 
 ## The core idea
 

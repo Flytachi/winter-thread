@@ -9,15 +9,22 @@
 Java-like API for running and controlling background tasks as isolated OS
 processes — for parallel and long-running work.
 
+> **It's an engine — the foundation you build on.** A small, dependable core,
+> not a batteries-included framework: the layer your **queues, pools, schedulers
+> and workers** sit *on top of*. You bring the higher-level concurrency; the engine
+> handles the hard, boring parts — spawning, signals, isolation, transports.
+>
+> **A `Thread` here is a *process*, not a PHP thread.** The name is a deliberate nod
+> to a familiar API — just as Python's `multiprocessing.Process` mirrors its
+> threading interface. Every `Thread` is one fully isolated OS process wearing a
+> clean, thread-like face (`start()`, `join()`, `isAlive()`) — so there's no shared
+> state to corrupt and nothing to leak between tasks.
+
 **No heavy extensions.** Unlike `pthreads`, `ext-parallel`, or Swoole, it needs
 no ZTS build and no exotic runtime — just `proc_open` and the standard POSIX
 extensions (`ext-pcntl`, `ext-posix`) that ship with nearly every PHP install.
 Each task runs in a fresh, isolated PHP process, so there is no shared state to
 corrupt and no inherited connections to break.
-
-It is deliberately a low-level **engine** — a small, dependable core to build
-pools, queues and schedulers on — that abstracts away `proc_open` and POSIX
-signals behind a friendly API.
 
 ## Key Features
 
@@ -152,10 +159,12 @@ inside the task to your own store), since the engine's control model is PID-base
 |-------------------------|--------------------------------------------------------------|
 | `'/dev/null'` (default) | Fire-and-forget: safe, output discarded                      |
 | `'/path/to/file.log'`   | Persistent logging for staging/production                    |
-| `null` (explicit)       | Interactive: parent polls `readOutput()` / `readError()`     |
+| `null` (explicit)       | Piped to parent: read via `readOutput()` / `readError()`     |
 
-> **Important:** Never pass `null` unless the parent actively drains the pipe in a polling
-> loop. A full buffer causes a **Broken pipe** that silently kills the background job.
+> **Note:** With `null`, `join()` and `reap()` drain the pipes internally while they
+> wait, so a bare `join()` never deadlocks on a large output — and `readOutput()`
+> after it returns the full buffered output. Use an explicit `readOutput()` poll loop
+> only when you want the output **live** as it is produced.
 
 ## Process Control
 

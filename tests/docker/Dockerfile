@@ -20,4 +20,10 @@ RUN pecl install swoole \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# /app is bind-mounted from the host at run time and owned by a different UID than
+# the container's root user, so git refuses to touch it ("dubious ownership"). Mark
+# it safe so composer can read the package version from git instead of warning and
+# defaulting to 1.0.0. Cosmetic only — tests pass either way.
+RUN git config --global --add safe.directory /app
+
 WORKDIR /app

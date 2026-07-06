@@ -98,10 +98,13 @@ daemon).
 
 You started with `outputTarget: null` and the job hangs or disappears with no error.
 
-- **You didn't drain the pipe.** When output goes to a parent pipe that nobody
-  reads, the ~64 KB OS buffer fills and the child blocks on `write()` (or gets a
-  *Broken pipe* and dies). Either drain `readOutput()`/`readError()` in a loop, or
-  don't use `null` — send output to `/dev/null` (default) or a file. See
+- **You used `null` in true fire-and-forget — never joined, reaped, or read it.**
+  `join()` and `reap()` drain the pipes internally while they wait, so a bare
+  `join()` is safe at any output size. The stall only bites when *nobody* touches
+  the handle: start with `null`, then never call `join()`, `reap()`, or
+  `readOutput()`/`readError()`. With no drainer the ~64 KB OS buffer fills and the
+  child blocks on `write()` (or gets a *Broken pipe* and dies). For fire-and-forget,
+  send output to `/dev/null` (default) or a file — never `null`. See
   [5. Output & Debugging](05-output-and-debugging.md#why-devnull-is-the-default).
 
 ## `Bad file descriptor` under Swoole

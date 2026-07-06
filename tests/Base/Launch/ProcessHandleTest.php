@@ -18,6 +18,42 @@ class ProcessHandleTest extends TestCase
         return new ProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
     }
 
+    /** Handle whose STDOUT/STDERR are pipes back to us (the outputTarget: null wiring). */
+    private function pipedHandleFor(string $cmd): ProcessHandle
+    {
+        $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $pipes = [];
+        $proc = proc_open($cmd, $desc, $pipes);
+        $status = proc_get_status($proc);
+        return new ProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
+    }
+
+    public function testJoinDrainsLargePipeOutputWithoutDeadlock(): void
+    {
+        // 200 KB — well past the ~64 KB pipe buffer. Before draining was added, a
+        // bare join() here would hang forever: the child blocks on write() and
+        // never exits, so join() never sees it stop.
+        $bytes = 200_000;
+        $h = $this->pipedHandleFor("head -c $bytes /dev/zero | tr '\\0' A");
+
+        $t0 = microtime(true);
+        $exit = $h->join(30);
+        $elapsed = microtime(true) - $t0;
+
+        $this->assertSame(0, $exit, 'join() must complete on a child that floods the pipe');
+        $this->assertLessThan(10, $elapsed, 'join() must not hang while draining');
+        $this->assertSame($bytes, strlen($h->readOutput()), 'all piped bytes must be captured');
+    }
+
+    public function testReadOutputReturnsBufferedDataAfterJoin(): void
+    {
+        // Regression: readOutput() used to return '' after join() because finish()
+        // closed the pipes before anything could be read. Now join() buffers it.
+        $h = $this->pipedHandleFor('printf "hello-after-join"');
+        $this->assertSame(0, $h->join(10));
+        $this->assertSame('hello-after-join', $h->readOutput());
+    }
+
     public function testJoinReturnsExitCode(): void
     {
         $h = $this->handleFor('exit 3');
