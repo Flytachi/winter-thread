@@ -103,7 +103,12 @@ readonly class AdaptiveRunner implements Runner
         }
 
         if (isset($options['detach'])) {
-            $this->daemonize();
+            try {
+                $this->daemonize();
+            } catch (ThreadException $e) {
+                fwrite($this->stderr(), "Error: ". $e->getMessage() . "\n");
+                exit(1);
+            }
         }
 
         $this->setProcessTitle($options, $runnable);
@@ -156,8 +161,7 @@ readonly class AdaptiveRunner implements Runner
     {
         $pid = pcntl_fork();
         if ($pid === -1) {
-            fwrite($this->stderr(), "Error: fork failed for detached mode.\n");
-            exit(1);
+            throw new ThreadException("fork failed for detached mode.");
         }
         if ($pid > 0) {
             // Launcher process L: exit immediately so the parent reaps it cheaply.
@@ -165,8 +169,7 @@ readonly class AdaptiveRunner implements Runner
         }
         // Worker process W: new session, no controlling terminal, reparented to init.
         if (posix_setsid() === -1) {
-            fwrite($this->stderr(), "Error: setsid failed for detached mode.\n");
-            exit(1);
+            throw new ThreadException("setsid failed for detached mode.");
         }
     }
 
