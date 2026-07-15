@@ -123,6 +123,11 @@ readonly class AdaptiveRunner implements Runner
      * transport staging. A `--shmkey` option means a shared-memory segment;
      * otherwise the payload is on STDIN (pipe and temp-file deliveries are
      * identical from the child's view).
+     *
+     * Child-side extension seam: a subclass may override this to receive from a
+     * custom source, delegating to `parent::receive($options)` for the built-in
+     * STDIN/shm deliveries. (A readonly class may only be extended by a readonly
+     * subclass.)
      */
     protected function receive(array $options): string
     {
