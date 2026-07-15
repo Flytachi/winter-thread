@@ -2,7 +2,6 @@
 <?php
 
 use Flytachi\Winter\Thread\Runner\AdaptiveRunner;
-use Opis\Closure\Security\DefaultSecurityProvider;
 
 $autoloader = dirname(__DIR__, 2) . '/autoload.php';
 if (file_exists($autoloader)) {
@@ -17,19 +16,6 @@ ignore_user_abort(true);
 
 $options = getopt('', ['namespace::', 'name::', 'tag::', 'debug', 'detach', 'shmkey::']);
 
-if (isset($options['debug'])) {
-    error_reporting(E_ALL);
-    ini_set('display_errors', 1);
-    ini_set('display_startup_errors', 1);
-} else {
-    error_reporting(0);
-    ini_set('display_errors', 0);
-    ini_set('display_startup_errors', 0);
-}
-
-// The child receives the parent's signing secret through the environment
-// (owner-only /proc/<pid>/environ), never argv. Build the verifier from it.
-$secret = getenv('WINTER_THREAD_SECRET') ?: null;
-$security = $secret !== null ? new DefaultSecurityProvider(secret: $secret) : null;
-
-exit(new AdaptiveRunner($security)->execute($options));
+// AdaptiveRunner::adaptive() reads the parent's signing secret from the
+// environment (owner-only /proc/<pid>/environ, never argv) and builds the verifier.
+exit(AdaptiveRunner::adaptive()->execute($options));

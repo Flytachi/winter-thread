@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Swoole;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
 use Flytachi\Winter\Thread\Tests\Fixtures\PayloadProbeTask;
 use Flytachi\Winter\Thread\Thread;
@@ -12,10 +12,17 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Swoole correctness in both runtime states: inside a coroutine with hooks
- * (SWOOLE_HOOK_ALL) and with swoole loaded but dormant. In each case the payload
- * must arrive intact (the AdaptiveEngine picks a safe transport) and no worker
- * may linger as a zombie.
+ * Narrow smoke test: a *single* spawn inside a one-shot `Swoole\Coroutine\run`,
+ * in two runtime states — hooks on (SWOOLE_HOOK_ALL) and swoole loaded but
+ * dormant. It only asserts that `CliLauncher::adaptive()` picks a pipe-free
+ * transport so the payload arrives intact, and that no worker lingers as a zombie.
+ *
+ * This is NOT a claim that winter-thread is production-safe under Swoole. It does
+ * NOT reproduce the conditions where in-coroutine dispatch actually breaks: a
+ * long-lived server worker, active socket connections (needed for the reactor's
+ * deferred-close ↔ fd-reuse race), spawning across successive requests, or reading
+ * a child's output pipe under hooks. Green here ≠ works in a live Swoole server.
+ * Swoole support is under active development — see docs/08.
  */
 #[Group('container')]
 #[Group('swoole')]
@@ -35,13 +42,13 @@ class SwooleScenariosTest extends TestCase
         if (class_exists('\Swoole\Runtime')) {
             \Swoole\Runtime::enableCoroutine(0);
         }
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     private function spawnProbe(): ?string
     {
         $out = sys_get_temp_dir() . '/wt-sw-' . uniqid('', true) . '.txt';
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
         $thread = new Thread(new PayloadProbeTask($out));
         $thread->start();
         $thread->join();

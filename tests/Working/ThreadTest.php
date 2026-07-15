@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Working;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
-use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
@@ -21,8 +20,8 @@ class ThreadTest extends TestCase
 {
     protected function tearDown(): void
     {
-        // Reset to a fresh default engine so a bindEngine() in any test never leaks.
-        Thread::bindEngine(new AdaptiveEngine());
+        // Reset to a fresh default launcher so a bindLauncher() in any test never leaks.
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     // --- Constructor & Getters ---
@@ -43,13 +42,13 @@ class ThreadTest extends TestCase
         $prev = getenv('WINTER_THREAD_SECRET');
         putenv('WINTER_THREAD_SECRET=ambient-leak');
         try {
-            $adaptive = new AdaptiveEngine();
-            Thread::bindEngine(
-                (new ManualEngine())
-                    ->withTransport(new PipeTransport())
-                    ->withBinaryPath($adaptive->binaryPath())
-                    ->withRunnerPath($adaptive->runnerPath())
-            );
+            // An explicitly unsigned launcher (no secret) must still run the task
+            // despite the ambient WINTER_THREAD_SECRET — it blanks it for the child.
+            Thread::bindLauncher(new CliLauncher(
+                binaryPath: PHP_BINARY,
+                runnerPath: dirname(__DIR__, 2) . '/wRunner',
+                transport: new PipeTransport(),
+            ));
             $thread = new Thread(new SleepTask(0));
             $thread->start();
             $this->assertSame(0, $thread->join(), 'unsigned task must run despite an ambient secret');
@@ -559,7 +558,7 @@ class ThreadTest extends TestCase
 
     public function testTempFileEngineStartsAndJoins(): void
     {
-        Thread::bindEngine((new AdaptiveEngine(transport: new TempFileTransport())));
+        Thread::bindLauncher((CliLauncher::adaptive(transport: new TempFileTransport())));
         $thread = new Thread(new SleepTask(0));
         $pid = $thread->start();
         $this->assertGreaterThan(0, $pid);
@@ -568,7 +567,7 @@ class ThreadTest extends TestCase
 
     public function testTempFileEngineDeliversCorrectOutput(): void
     {
-        Thread::bindEngine((new AdaptiveEngine(transport: new TempFileTransport())));
+        Thread::bindLauncher((CliLauncher::adaptive(transport: new TempFileTransport())));
         $logFile = sys_get_temp_dir() . '/wt-tmpfile-' . uniqid() . '.log';
         $thread = new Thread(new EchoTask('swoole-safe'));
         $thread->start(outputTarget: $logFile);
@@ -583,7 +582,7 @@ class ThreadTest extends TestCase
         if (!extension_loaded('shmop')) {
             $this->markTestSkipped('ext-shmop not available.');
         }
-        Thread::bindEngine((new AdaptiveEngine(transport: new ShmTransport())));
+        Thread::bindLauncher((CliLauncher::adaptive(transport: new ShmTransport())));
         $logFile = sys_get_temp_dir() . '/wt-shm-' . uniqid() . '.log';
         $thread = new Thread(new EchoTask('shm-payload'));
         $thread->start(outputTarget: $logFile);

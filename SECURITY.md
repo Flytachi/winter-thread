@@ -4,10 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.x     | ✅ |
-| < 2.0   | ❌ |
+| 3.x     | ✅ |
+| < 3.0   | ❌ |
 
-Security fixes land on the latest `2.x` line.
+Security fixes land on the latest `3.x` line.
 
 ## Reporting a vulnerability
 
@@ -32,8 +32,9 @@ process, so its threat model centers on **payload integrity**. See
 
 - **Deserialization is always via `opis/closure`**, never native `unserialize()`.
 - **Signing is opt-in.** Set a secret (`WINTER_THREAD_SECRET` env, or
-  `withSecurity()`) and every payload is HMAC-signed by the parent and verified by
-  the child; forged/tampered payloads are rejected before any object is built. With
+  `CliLauncher::adaptive(secret: …)`) and every payload is HMAC-signed by the parent
+  and verified by the child; forged/tampered payloads are rejected before any object
+  is built. With
   **no** secret, the payload is unsigned and the trust boundary is the private,
   owner-only delivery channel (stdin pipe, `0600` temp file, or `0600` shared
   memory).
@@ -45,8 +46,8 @@ process, so its threat model centers on **payload integrity**. See
 
 ### Your responsibilities
 
-- **Set a secret in production** (`WINTER_THREAD_SECRET` or `withSecurity()`) — long
-  and random — so payloads are cryptographically verified.
+- **Set a secret in production** (`WINTER_THREAD_SECRET` or the `secret:` argument) —
+  long and random — so payloads are cryptographically verified.
 - **Never put secrets in `start()` arguments or in the namespace/name/tag** — those
   are visible via `ps` / `/proc/<pid>/cmdline` to same-user processes. Put sensitive
   data in the task's **constructor** (it rides in the payload, not argv).

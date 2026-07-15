@@ -9,8 +9,9 @@ use Flytachi\Winter\Thread\ThreadException;
 /**
  * Delivers the payload through a System V shared-memory segment (RAM only). The
  * segment is allocated `0600` and its key is passed to the child via `--shmkey`;
- * the child reads and deletes it. Uses no pipe or temp file — safe under Swoole
- * `SWOOLE_HOOK_ALL`, at the cost of requiring `ext-shmop`.
+ * the child ({@see \Flytachi\Winter\Thread\Runner\AdaptiveRunner}) reads and deletes
+ * it. Uses no pipe or temp file — safe under Swoole `SWOOLE_HOOK_ALL`, at the cost
+ * of requiring `ext-shmop`.
  */
 final class ShmTransport implements PayloadTransport
 {
@@ -37,21 +38,6 @@ final class ShmTransport implements PayloadTransport
             }
         }
         throw new ThreadException('Failed to allocate shared memory segment.');
-    }
-
-    public function receive(array $options): string
-    {
-        if (!extension_loaded('shmop')) {
-            throw new ThreadException('ShmTransport requires ext-shmop.');
-        }
-        $key = (int) ($options['shmkey'] ?? 0);
-        $shm = @shmop_open($key, 'a', 0, 0);
-        if ($shm === false) {
-            throw new ThreadException("Failed to open shared memory segment (key={$key}).");
-        }
-        $payload = shmop_read($shm, 0, shmop_size($shm));
-        shmop_delete($shm);
-        return $payload;
     }
 
     public function cleanup(StagedPayload $staged): void

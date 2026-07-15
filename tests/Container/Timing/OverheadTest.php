@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Timing;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
@@ -30,7 +30,7 @@ class OverheadTest extends TestCase
 
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     /** @return array<string, array{class-string, bool}> */
@@ -58,7 +58,7 @@ class OverheadTest extends TestCase
         if ($needsShmop && !extension_loaded('shmop')) {
             $this->markTestSkipped('ext-shmop not available.');
         }
-        Thread::bindEngine(new AdaptiveEngine(transport: new $transportClass()));
+        Thread::bindLauncher(CliLauncher::adaptive(transport: new $transportClass()));
 
         $samples = [];
         for ($i = 0; $i < self::ITERATIONS; $i++) {
@@ -82,7 +82,7 @@ class OverheadTest extends TestCase
         if (!function_exists('posix_setsid')) {
             $this->markTestSkipped('ext-posix not available.');
         }
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
 
         // The worker sleeps 2s; a correct detached start returns in ~spawn time
         // (well under 1.5s). A blocking start would land around 2s+ and fail.

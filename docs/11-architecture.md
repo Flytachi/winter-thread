@@ -10,13 +10,13 @@ Everything happens in exactly two processes, and they never share objects — on
 bytes on a channel and flags on a command line:
 
 - **Parent** (your app) — serializes the task, stages the payload, and `proc_open`s
-  the worker. Uses the `Engine` you bound.
+  the worker. Uses the `Launcher` you bound.
 - **Child** (`bin: wRunner`) — a clean PHP CLI process that constructs an
   **`AdaptiveRunner`**, reads `WINTER_THREAD_SECRET` from its environment to build
   the signature verifier, receives the payload, verifies + deserializes it,
   optionally daemonizes, and runs the task.
 
-The two sides are **fully independent**: the parent-side `Engine` and the
+The two sides are **fully independent**: the parent-side `Launcher` and the
 child-side `Runner` don't reference each other, and neither is shipped across the
 boundary. Only three things cross it:
 
@@ -33,27 +33,24 @@ boundary. Only three things cross it:
 ════════════ PARENT ════════════          ═══════ CHILD (bin: wRunner) ═══════
 
           Thread  (facade)                    wRunner (thin bootstrap script)
-   start / join / reap / detach / …              │ reads WINTER_THREAD_SECRET (env)
-                 │ asks the Engine                ▼
-        ┌──────  Engine  ◀── bindEngine()     Runner (interface)
-        │   AdaptiveEngine (default)            └ AdaptiveRunner (child-side default)
-        │   ManualEngine                           1. receive()  (shmkey? shm : STDIN)
-        │                                          2. Opis unserialize + verify signature
-        │   Engine provides (parent-side):         3. detached? fork + setsid
-        │    • transport(): PayloadTransport        4. set process title
-        │    • launcher():  Launcher                5. runnable->run(args)
-        │    • binaryPath() / runnerPath()          6. exit(code)
-        │    • security()
-        ▼                                    PayloadTransport (interface)
-   Launcher (interface)                        ├ PipeTransport
-     └ CliLauncher (proc_open)                 ├ TempFileTransport
-          │ launch(LaunchSpec)                 └ ShmTransport
-          ▼
-    ProcessHandle  ◀═══ a Pool drives THIS directly
-      pid, isAlive, reap, join,
-      readOutput/Error, signal, detach
+   start / join / reap / detach / …              │ AdaptiveRunner::adaptive()
+                 │ asks the Launcher              │   reads WINTER_THREAD_SECRET (env)
+                 ▼                                ▼
+   Launcher (interface) ◀── bindLauncher()    Runner (interface)
+     └ CliLauncher (default, proc_open)         └ AdaptiveRunner (child-side default)
+          │ launch(): ProcessHandle                1. receive()  (shmkey? shm : STDIN)
+          │ security(): ?provider                  2. Opis unserialize + verify signature
+          │ (holds transport, binary/runner,       3. detached? fork + setsid
+          │  secret — its own concern)             4. set process title
+          ▼                                        5. runnable->run(args)
+   ProcessHandle (interface) ◀═ a Pool drives it   6. exit(code)
+     └ CliProcessHandle (proc_open)
+       pid, isAlive, reap, join,             PayloadTransport (interface, parent-only)
+       readOutput/Error, signal, detach        ├ PipeTransport    (stage / cleanup)
+                                                ├ TempFileTransport
+                                                └ ShmTransport
 
-   (Engine and Runner are independent — connected only by payload + env + flags)
+   (Launcher and Runner are independent — connected only by payload + env + flags)
 ```
 
 ## Responsibilities
@@ -61,32 +58,30 @@ boundary. Only three things cross it:
 | Type | Kind | Mutability | Responsibility |
 |---|---|---|---|
 | `Runnable` | interface | — | the task contract (`run(array $args)`) |
-| `Thread` | facade | mutable | the friendly Java-like API; delegates to the engine |
-| `Engine` | interface | — | parent-side: selects/holds transport, launcher, paths, secret |
-| `AdaptiveEngine` | class | `readonly` | self-configuring engine (default) |
-| `ManualEngine` | class | immutable via withers | explicit, clean-slate engine |
-| `Launcher` | interface | — | parent side: spawn a process → `ProcessHandle` |
-| `CliLauncher` | class | `readonly` | `proc_open`-based launcher |
-| `ProcessHandle` | class | mutable (tracks state) | low-level process control (reap/join/detach/signals/read) |
-| `PayloadTransport` | interface | — | parent↔child payload delivery |
+| `Thread` | facade | mutable | the friendly Java-like API; delegates to the launcher |
+| `Launcher` | interface | — | parent side: spawn a process → `ProcessHandle`; sign payload (`security()`) |
+| `CliLauncher` | class | `readonly` | default `proc_open` launcher; self-configures via `adaptive()`; holds transport/paths/secret |
+| `ProcessHandle` | interface | — | parent-side control contract (reap/join/detach/signals/read) |
+| `CliProcessHandle` | class | mutable (tracks state) | the `proc_open`-backed `ProcessHandle` |
+| `PayloadTransport` | interface | — | parent-side payload staging (`stage`/`cleanup`) |
 | `Pipe`/`TempFile`/`Shm` `Transport` | class | — | the three delivery strategies |
-| `Runner` | interface | — | child-side: read payload, deserialize, run (independent of `Engine`) |
+| `Runner` | interface | — | child-side: read payload, deserialize, run (independent of `Launcher`) |
 | `AdaptiveRunner` | class | `readonly` | default child-side runner (+ detached fork/setsid) |
 | `LaunchSpec` | DTO | `readonly` | all launch parameters in one value object |
 | `StagedPayload` | DTO | `readonly` | staging result (fd-0 spec, cli args, cleanup ref) |
 | `Signal` | class | static | POSIX signal helpers, with zombie detection |
 | `ThreadException` | class | — | the library's only exception (`extends RuntimeException`) |
 
-Interfaces exist **only** at genuine extension points (`Engine`, `Launcher`,
-`Runner`, `PayloadTransport`). `ProcessHandle` and the DTOs are concrete types you
-*consume*, not implement.
+Interfaces exist **only** at genuine extension points (`Launcher`, `ProcessHandle`,
+`Runner`, `PayloadTransport`). The DTOs (`LaunchSpec`, `StagedPayload`) are concrete
+types you *consume*, not implement.
 
 ## A launch, step by step
 
 1. **`Thread::start()`** guards against a double-start, serializes the `Runnable`
    with `opis/closure` (signed if a secret is set), and builds a `LaunchSpec` with
    the namespace/name/tag, arguments, debug flag, output target, and detached flag.
-2. **`Engine::launcher()->launch($spec)`** asks the transport to `stage()` the
+2. **`Launcher::launch($spec)`** asks the transport to `stage()` the
    payload, assembles the descriptor set (fd 0 from the staged `stdinSpec`; fd 1/2
    to the output file, or to non-blocking pipes when `output === null`), builds a
    fully `escapeshellarg`-escaped command
@@ -111,11 +106,11 @@ per task. Build a `LaunchSpec` (serialize the task yourself, or reuse one spec
 across launches), fan out, and harvest with a single non-blocking loop:
 
 ```php
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Launch\ProcessHandle;
 use Flytachi\Winter\Thread\LaunchSpec;
 
-$launcher = (new AdaptiveEngine())->launcher();
+$launcher = CliLauncher::adaptive();
 
 // launch a batch (payload = the already-serialized Runnable bytes)
 $handles = array_map(
@@ -150,10 +145,10 @@ identically for attached and detached workers.
 ## Serializing a task outside `Thread`
 
 `Thread` serializes for you, but a pool that owns its own `LaunchSpec`s can do it
-directly with the bound engine's security provider:
+directly with the bound launcher's security provider:
 
 ```php
-$payload = \Opis\Closure\serialize($runnable, Thread::engine()->security());
+$payload = \Opis\Closure\serialize($runnable, Thread::launcher()->security());
 $spec    = new LaunchSpec(payload: $payload, name: 'MyTask');
 ```
 

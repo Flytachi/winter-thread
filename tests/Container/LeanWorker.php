@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container;
 
-use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 
 /**
- * Builds an engine whose worker is a "lean" PHP: invoked with `-n` (no php.ini),
+ * Builds a launcher whose worker is a "lean" PHP: invoked with `-n` (no php.ini),
  * so no swoole / opcache / shared extensions are loaded. Useful for comparing the
  * footprint and throughput of a minimal worker against the default build.
  */
 trait LeanWorker
 {
-    private function leanEngine(): ManualEngine
+    private function leanLauncher(): CliLauncher
     {
         $wrapper = sys_get_temp_dir() . '/wt-lean-php.sh';
         if (!is_file($wrapper)) {
@@ -22,9 +22,10 @@ trait LeanWorker
             chmod($wrapper, 0755);
         }
 
-        return (new ManualEngine())
-            ->withTransport(new PipeTransport())
-            ->withBinaryPath($wrapper)
-            ->withRunnerPath(dirname(__DIR__, 2) . '/wRunner');
+        return new CliLauncher(
+            binaryPath: $wrapper,
+            runnerPath: dirname(__DIR__, 2) . '/wRunner',
+            transport: new PipeTransport(),
+        );
     }
 }

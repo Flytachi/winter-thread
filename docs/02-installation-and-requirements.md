@@ -43,35 +43,34 @@ staging and receiving side if the extension is missing — never a fatal error.
 
 `proc_open` must be permitted (not listed in `disable_functions`). Under FPM,
 `PHP_BINARY` points at the **FPM** binary, not a CLI one — running your worker
-through that would be wrong. The default [`AdaptiveEngine`](07-the-engine.md)
-detects a non-CLI SAPI and resolves a real PHP CLI binary from `PHP_BINDIR`
-instead. If detection fails in an unusual setup, set the path explicitly with a
-[`ManualEngine`](07-the-engine.md):
+through that would be wrong. The default [`CliLauncher`](07-the-launcher.md)
+(`adaptive()`) detects a non-CLI SAPI and resolves a real PHP CLI binary from
+`PHP_BINDIR` instead. If detection fails in an unusual setup, set the path
+explicitly:
 
 ```php
-Thread::bindEngine(
-    (new ManualEngine())
-        ->withBinaryPath('/usr/bin/php')
-        ->withRunnerPath(__DIR__ . '/vendor/flytachi/winter-thread/wRunner')
-        ->withTransport(new \Flytachi\Winter\Thread\Payload\PipeTransport())
-);
+Thread::bindLauncher(new CliLauncher(
+    binaryPath: '/usr/bin/php',
+    runnerPath: __DIR__ . '/vendor/flytachi/winter-thread/wRunner',
+    transport:  new \Flytachi\Winter\Thread\Payload\PipeTransport(),
+));
 ```
 
-> A `ManualEngine` configures **nothing** for you: `transport`, `binaryPath` and
-> `runnerPath` must all be set or the engine throws when they are accessed. Use it
-> only when you deliberately want full control; otherwise the `AdaptiveEngine`
-> handles FPM correctly on its own.
+> Explicit construction configures **nothing** for you: `binaryPath` and
+> `runnerPath` are required (a `null` transport is still auto-detected per launch).
+> Use it only when you deliberately want full control; otherwise
+> [`CliLauncher::adaptive()`](07-the-launcher.md) handles FPM correctly on its own.
 
 ### The runner path (`wRunner`)
 
 The child is bootstrapped by the `wRunner` script shipped in the package root.
-The `AdaptiveEngine` locates it automatically relative to the installed package
-(`vendor/flytachi/winter-thread/wRunner`). Two situations need attention:
+`CliLauncher::adaptive()` locates it automatically relative to the installed
+package (`vendor/flytachi/winter-thread/wRunner`). Two situations need attention:
 
 - **Phar / relocated deployments.** If your code is packed into a `.phar` or the
   vendor directory is not on a normal filesystem path, the script may not be
-  directly executable. Point a `ManualEngine` at a real on-disk copy with
-  `->withRunnerPath(...)`.
+  directly executable. Point an explicit `CliLauncher` at a real on-disk copy via
+  its `runnerPath:` argument.
 - **`open_basedir`.** The binary and runner paths must be inside any configured
   `open_basedir`.
 

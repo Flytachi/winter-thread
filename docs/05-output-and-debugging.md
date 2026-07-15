@@ -88,10 +88,9 @@ Notes:
 - These methods return `''` if you started with a file or `/dev/null` target (there
   is no pipe to read), and `''` once the handle is detached.
 
-> **Under Swoole**, prefer file output over `null` — the output pipes (fd 1/2) are
-> subject to the same `SWOOLE_HOOK_ALL` fd corruption as the payload pipe. The
-> `AdaptiveEngine` fixes the *payload* transport automatically, but it cannot fix
-> output pipes you explicitly asked for. See
+> **Under Swoole**, output behaviour depends on the (experimental) in-coroutine
+> dispatch path — both file and pipe output have trade-offs there, and none is a
+> settled recommendation yet. Swoole support is under active development; see
 > [8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility).
 
 ## Debug mode

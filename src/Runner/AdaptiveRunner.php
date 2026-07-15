@@ -4,29 +4,29 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Runner;
 
-use Flytachi\Winter\Thread\Payload\PipeTransport;
-use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Runnable;
+use Flytachi\Winter\Thread\ThreadException;
 use Opis\Closure\Security\DefaultSecurityProvider;
 
 /**
- * The default child-side runner — self-configuring, in the same spirit as its
- * parent-side sibling: it adapts to how the payload was delivered rather than
- * being told.
+ * The default child-side runner — self-configuring, mirroring its parent-side
+ * sibling {@see \Flytachi\Winter\Thread\Launch\CliLauncher}: both expose an
+ * `adaptive()` factory that reads the environment, and both stay deliberately
+ * independent (the child never references the parent-side launcher).
  *
- * `execute()` receives the payload (a `--shmkey` option means a shared-memory
- * segment, otherwise it reads STDIN — covering both the pipe and temp-file
- * deliveries), verifies and deserializes it into a {@see Runnable}, optionally
- * daemonizes (detached mode), sets the process title, and runs the task —
- * returning the exit code.
+ * `execute()` reads the delivered payload — from a shared-memory segment when a
+ * `--shmkey` option is present, otherwise from STDIN (covering both the pipe and
+ * temp-file deliveries) — verifies and deserializes it into a {@see Runnable},
+ * optionally daemonizes (detached mode), sets the process title, and runs the
+ * task, returning the exit code.
  *
- * Signature verification uses the optional {@see DefaultSecurityProvider} passed
- * in; the `wRunner` bootstrap builds one from the `WINTER_THREAD_SECRET`
- * environment variable.
+ * Signature verification uses the optional {@see DefaultSecurityProvider}; build
+ * one from the same secret the parent signed with (or use {@see adaptive()}, which
+ * reads `WINTER_THREAD_SECRET`). `null` means the payload is unsigned.
  *
  * @see Runner
  */
-final readonly class AdaptiveRunner implements Runner
+readonly class AdaptiveRunner implements Runner
 {
     /**
      * @param DefaultSecurityProvider|null $security  Verifies the payload signature — construct it
@@ -36,19 +36,46 @@ final readonly class AdaptiveRunner implements Runner
      *                                                 STDERR. Injectable so tests can capture output.
      */
     public function __construct(
-        private ?DefaultSecurityProvider $security = null,
-        private mixed $errStream = null,
+        protected ?DefaultSecurityProvider $security = null,
+        protected mixed $errStream = null,
     ) {
     }
 
-    private function stderr(): mixed
+    /**
+     * Self-configuring factory — the child-side mirror of
+     * {@see \Flytachi\Winter\Thread\Launch\CliLauncher::adaptive()}. Builds the
+     * signature verifier from `WINTER_THREAD_SECRET` (owner-only environment, set
+     * by the parent launcher), or none when unset/blanked.
+     */
+    public static function adaptive(): static
+    {
+        $secret = getenv('WINTER_THREAD_SECRET') ?: null;
+        return new static($secret !== null ? new DefaultSecurityProvider(secret: $secret) : null);
+    }
+
+    final protected function stderr(): mixed
     {
         return $this->errStream ?? STDERR;
     }
 
     public function execute(array $options): int
     {
-        $payload = $this->receiveTransport($options)->receive($options);
+        if (isset($options['debug'])) {
+            error_reporting(E_ALL);
+            ini_set('display_errors', 1);
+            ini_set('display_startup_errors', 1);
+        } else {
+            error_reporting(0);
+            ini_set('display_errors', 0);
+            ini_set('display_startup_errors', 0);
+        }
+
+        try {
+            $payload = $this->receive($options);
+        } catch (\Throwable $e) {
+            fwrite($this->stderr(), 'Error: ' . $e->getMessage() . "\n");
+            return 1;
+        }
         if ($payload === '') {
             fwrite($this->stderr(), "Error: No payload received.\n");
             return 1;
@@ -76,7 +103,12 @@ final readonly class AdaptiveRunner implements Runner
         }
 
         if (isset($options['detach'])) {
-            $this->daemonize();
+            try {
+                $this->daemonize();
+            } catch (ThreadException $e) {
+                fwrite($this->stderr(), 'Error: ' . $e->getMessage() . "\n");
+                return 1;
+            }
         }
 
         $this->setProcessTitle($options, $runnable);
@@ -91,18 +123,45 @@ final readonly class AdaptiveRunner implements Runner
         }
     }
 
-    /** Read side is options-driven: shmkey → shm, otherwise stdin (pipe/tempfile identical). */
-    private function receiveTransport(array $options): PipeTransport|ShmTransport
+    /**
+     * Read the delivered payload — the child-side counterpart to the parent's
+     * transport staging. A `--shmkey` option means a shared-memory segment;
+     * otherwise the payload is on STDIN (pipe and temp-file deliveries are
+     * identical from the child's view).
+     *
+     * Child-side extension seam: a subclass may override this to receive from a
+     * custom source, delegating to `parent::receive($options)` for the built-in
+     * STDIN/shm deliveries. (A readonly class may only be extended by a readonly
+     * subclass.)
+     */
+    protected function receive(array $options): string
     {
-        return isset($options['shmkey']) ? new ShmTransport() : new PipeTransport();
+        if (isset($options['shmkey'])) {
+            return $this->receiveShm((int) $options['shmkey']);
+        }
+        return (string) stream_get_contents(STDIN);
     }
 
-    private function daemonize(): void
+    /** Read-and-delete the shared-memory segment the parent's ShmTransport allocated. */
+    final protected function receiveShm(int $key): string
+    {
+        if (!extension_loaded('shmop')) {
+            throw new ThreadException('shmkey payload requires ext-shmop.');
+        }
+        $shm = @shmop_open($key, 'a', 0, 0);
+        if ($shm === false) {
+            throw new ThreadException("Failed to open shared memory segment (key={$key}).");
+        }
+        $payload = shmop_read($shm, 0, shmop_size($shm));
+        shmop_delete($shm);
+        return $payload;
+    }
+
+    final protected function daemonize(): void
     {
         $pid = pcntl_fork();
         if ($pid === -1) {
-            fwrite($this->stderr(), "Error: fork failed for detached mode.\n");
-            exit(1);
+            throw new ThreadException("fork failed for detached mode.");
         }
         if ($pid > 0) {
             // Launcher process L: exit immediately so the parent reaps it cheaply.
@@ -110,12 +169,11 @@ final readonly class AdaptiveRunner implements Runner
         }
         // Worker process W: new session, no controlling terminal, reparented to init.
         if (posix_setsid() === -1) {
-            fwrite($this->stderr(), "Error: setsid failed for detached mode.\n");
-            exit(1);
+            throw new ThreadException("setsid failed for detached mode.");
         }
     }
 
-    private function setProcessTitle(array $options, Runnable $runnable): void
+    protected function setProcessTitle(array $options, Runnable $runnable): void
     {
         if (!function_exists('cli_set_process_title')) {
             return;
@@ -133,7 +191,7 @@ final readonly class AdaptiveRunner implements Runner
     }
 
     /** @return array<string, string|bool> */
-    private function parseArgs(): array
+    final protected function parseArgs(): array
     {
         $argv = $_SERVER['argv'] ?? [];
         $args = [];

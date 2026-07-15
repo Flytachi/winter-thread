@@ -10,7 +10,7 @@ namespace Flytachi\Winter\Thread\Payload;
  * the child reads it from STDIN at startup. Requires no extension.
  *
  * Under Swoole with `SWOOLE_HOOK_ALL` pipe descriptors are corrupted; prefer
- * {@see TempFileTransport} or {@see ShmTransport} there (the AdaptiveEngine
+ * {@see TempFileTransport} or {@see ShmTransport} there ({@see CliLauncher::adaptive()}
  * switches automatically).
  */
 final class PipeTransport implements PayloadTransport
@@ -18,11 +18,6 @@ final class PipeTransport implements PayloadTransport
     public function stage(string $payload): StagedPayload
     {
         return new StagedPayload(stdinSpec: ['pipe', 'r'], pipePayload: $payload);
-    }
-
-    public function receive(array $options): string
-    {
-        return (string) stream_get_contents(STDIN);
     }
 
     public function cleanup(StagedPayload $staged): void

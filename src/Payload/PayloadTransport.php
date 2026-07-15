@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Flytachi\Winter\Thread\Payload;
 
 /**
- * Strategy for delivering a serialized task payload from the parent to the child.
+ * Parent-side strategy for delivering a serialized task payload to the child.
  *
- * The parent and child are separate processes, so a transport works in two
- * cooperating halves:
- * - `stage()` runs in the **parent**: it prepares the payload and returns the
- *   stdin descriptor plus any extra CLI args needed to locate it.
- * - `receive()` runs in the **child**: it reads the payload back.
+ * A transport prepares the payload for `proc_open` and cleans up afterwards; it is
+ * purely a parent concern. The child does not use a transport — it simply reads
+ * whatever the parent staged: STDIN for the pipe/temp-file deliveries, or a
+ * shared-memory segment named by `--shmkey` (see
+ * {@see \Flytachi\Winter\Thread\Runner\AdaptiveRunner}).
  *
  * Three implementations ship with the library:
  * - {@see PipeTransport}     — payload via a stdin pipe (default in CLI).
@@ -19,7 +19,7 @@ namespace Flytachi\Winter\Thread\Payload;
  * - {@see ShmTransport}      — payload via System V shared memory (Swoole-safe; needs ext-shmop).
  *
  * The file/shm transports avoid pipe file descriptors, which Swoole corrupts
- * under `SWOOLE_HOOK_ALL`; {@see \Flytachi\Winter\Thread\Engine\AdaptiveEngine}
+ * under `SWOOLE_HOOK_ALL`; {@see \Flytachi\Winter\Thread\Launch\CliLauncher::adaptive()}
  * selects one of them automatically when a Swoole runtime is active.
  *
  * @see StagedPayload
@@ -30,7 +30,7 @@ namespace Flytachi\Winter\Thread\Payload;
 interface PayloadTransport
 {
     /**
-     * Parent side: prepare the payload for delivery.
+     * Prepare the payload for delivery.
      *
      * @param string $payload The serialized Runnable.
      * @return StagedPayload The fd-0 descriptor, extra CLI args, and cleanup handle.
@@ -38,16 +38,8 @@ interface PayloadTransport
     public function stage(string $payload): StagedPayload;
 
     /**
-     * Child side: read the delivered payload back.
-     *
-     * @param array<string, mixed> $options Parsed CLI options (e.g. `shmkey`).
-     * @return string The serialized Runnable, ready to deserialize.
-     */
-    public function receive(array $options): string;
-
-    /**
-     * Parent side: release any resources staged by {@see stage()} (temp file or
-     * shared-memory segment). Safe to call even if the child already cleaned up.
+     * Release any resources staged by {@see stage()} (temp file or shared-memory
+     * segment). Safe to call even if the child already consumed them.
      */
     public function cleanup(StagedPayload $staged): void;
 }

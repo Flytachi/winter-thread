@@ -6,23 +6,98 @@ namespace Flytachi\Winter\Thread\Launch;
 
 use Flytachi\Winter\Thread\LaunchSpec;
 use Flytachi\Winter\Thread\Payload\PayloadTransport;
+use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\StagedPayload;
+use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use Flytachi\Winter\Thread\ThreadException;
+use Opis\Closure\Security\DefaultSecurityProvider;
 
+/**
+ * The default parent-side backend: launches a local PHP CLI process with `proc_open`.
+ *
+ * It bundles everything the parent needs to spawn and trust a worker — the PHP
+ * binary path, the `wRunner` bootstrap path, the payload transport, and the
+ * optional signing secret — so `Thread` binds a single object instead of an engine.
+ *
+ * Two ways to build one:
+ * - {@see CliLauncher::adaptive()} — self-configuring; the default when nothing is
+ *   bound. Detects the CLI/FPM binary, a Swoole-safe transport, and reads
+ *   `WINTER_THREAD_SECRET` from the environment.
+ * - `new CliLauncher(...)` — explicit; you pass every part yourself.
+ *
+ * ```
+ * // Zero-config — this is already the default.
+ * $thread = new Thread(new MyTask());
+ *
+ * // Explicit:
+ * Thread::bindLauncher(new CliLauncher(
+ *     binaryPath: '/usr/bin/php',
+ *     runnerPath: __DIR__ . '/vendor/flytachi/winter-thread/wRunner',
+ *     transport:  new TempFileTransport(),
+ *     secret:     'your-signing-secret',
+ * ));
+ * ```
+ *
+ * @see Launcher
+ */
 final readonly class CliLauncher implements Launcher
 {
-    /** @param array<string,string> $childEnv */
+    /**
+     * @param PayloadTransport|null $transport A fixed transport, or `null` to
+     *        auto-detect one per launch (see {@see launch()}). Detection is
+     *        deferred to launch time on purpose: the Swoole runtime may be
+     *        inactive when the launcher is built (e.g. bound during preload) yet
+     *        active when a task is actually started (inside a worker/coroutine).
+     */
     public function __construct(
         private string $binaryPath,
         private string $runnerPath,
-        private PayloadTransport $transport,
-        private array $childEnv = [],
+        private ?PayloadTransport $transport = null,
+        private ?string $secret = null,
     ) {
+    }
+
+    /**
+     * Self-configuring factory — detects sensible defaults for the current
+     * environment, all overridable per argument:
+     * - transport: left to per-launch auto-detection ({@see TempFileTransport}
+     *   under an active Swoole runtime, otherwise {@see PipeTransport}) unless an
+     *   explicit one is given;
+     * - binary path: the real PHP CLI binary (correct even under FPM/CGI);
+     * - runner path: the packaged `wRunner`;
+     * - secret: the explicit argument, else `WINTER_THREAD_SECRET`, else none.
+     *
+     * The binary path and secret are read from the stable environment eagerly; the
+     * transport is intentionally NOT resolved here, so binding this launcher during
+     * preload (before the Swoole runtime is up) still yields the correct transport
+     * once tasks run inside a worker/coroutine.
+     */
+    public static function adaptive(
+        ?string $secret = null,
+        ?PayloadTransport $transport = null,
+        ?string $binaryPath = null,
+        ?string $runnerPath = null,
+    ): self {
+        return new self(
+            binaryPath: $binaryPath ?? self::detectBinaryPath(),
+            runnerPath: $runnerPath ?? (dirname(__DIR__, 2) . '/wRunner'),
+            transport: $transport,
+            secret: $secret ?? (getenv('WINTER_THREAD_SECRET') ?: null),
+        );
+    }
+
+    public function security(): ?DefaultSecurityProvider
+    {
+        return $this->secret !== null ? new DefaultSecurityProvider(secret: $this->secret) : null;
     }
 
     public function launch(LaunchSpec $spec): ProcessHandle
     {
-        $staged = $this->transport->stage($spec->payload);
+        // Resolve the transport HERE, not at construction: under Swoole the runtime
+        // may only be active (coroutine/hooks up) by the time a task is launched,
+        // long after this launcher was built. A null transport means auto-detect.
+        $transport = $this->transport ?? self::detectTransport();
+        $staged = $transport->stage($spec->payload);
 
         $descriptors = [0 => $staged->stdinSpec];
         if ($spec->output !== null) {
@@ -33,12 +108,11 @@ final readonly class CliLauncher implements Launcher
             $descriptors[2] = ['pipe', 'w'];
         }
 
-        $env = $this->childEnv === [] ? null : array_merge(getenv(), $this->childEnv);
         $pipes = [];
-        $process = proc_open($this->buildCommand($spec, $staged), $descriptors, $pipes, null, $env);
+        $process = proc_open($this->buildCommand($spec, $staged), $descriptors, $pipes, null, $this->childEnv());
 
         if (!is_resource($process)) {
-            $this->transport->cleanup($staged);
+            $transport->cleanup($staged);
             throw new ThreadException('Failed to start the process using proc_open.');
         }
 
@@ -62,11 +136,33 @@ final readonly class CliLauncher implements Launcher
                 }
             }
             proc_close($process);
-            $this->transport->cleanup($staged);
+            $transport->cleanup($staged);
             throw new ThreadException('Process failed to start or terminated immediately.');
         }
 
-        return new ProcessHandle($process, $pipes, $status['pid'], $this->transport, $staged);
+        return new CliProcessHandle($process, $pipes, $status['pid'], $transport, $staged);
+    }
+
+    /**
+     * The child's environment — the single place the signing secret becomes an env
+     * var (owner-only /proc/<pid>/environ), never argv.
+     *
+     * - With a secret: inject it so the child builds a matching verifier.
+     * - Without one: if the parent carries an ambient WINTER_THREAD_SECRET, blank it
+     *   for the child — otherwise the child would build a verifier and reject our
+     *   (unsigned) payloads. When there is nothing to override, return null so
+     *   proc_open inherits the environment unchanged.
+     *
+     * @return array<string,string>|null
+     */
+    private function childEnv(): ?array
+    {
+        if ($this->secret !== null) {
+            return array_merge(getenv(), ['WINTER_THREAD_SECRET' => $this->secret]);
+        }
+        return getenv('WINTER_THREAD_SECRET') !== false
+            ? array_merge(getenv(), ['WINTER_THREAD_SECRET' => ''])
+            : null;
     }
 
     private function buildCommand(LaunchSpec $spec, StagedPayload $staged): string
@@ -103,5 +199,37 @@ final readonly class CliLauncher implements Launcher
         return escapeshellarg($this->binaryPath) . ' '
             . escapeshellarg($this->runnerPath) . ' '
             . implode(' ', $args);
+    }
+
+    private static function detectTransport(): PayloadTransport
+    {
+        if (extension_loaded('swoole') && self::swooleRuntimeActive()) {
+            return new TempFileTransport();
+        }
+        return new PipeTransport();
+    }
+
+    /**
+     * true if we are inside a coroutine OR Swoole runtime hooks are enabled
+     * (both corrupt pipe fds under SWOOLE_HOOK_ALL).
+     */
+    private static function swooleRuntimeActive(): bool
+    {
+        if (class_exists('\Swoole\Coroutine') && \Swoole\Coroutine::getCid() !== -1) {
+            return true;
+        }
+        if (class_exists('\Swoole\Runtime') && method_exists('\Swoole\Runtime', 'getHookFlags')) {
+            return \Swoole\Runtime::getHookFlags() !== 0;
+        }
+        return false;
+    }
+
+    private static function detectBinaryPath(): string
+    {
+        if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server') {
+            return PHP_BINARY ?: 'php';
+        }
+        $candidate = PHP_BINDIR . '/php';
+        return is_executable($candidate) ? $candidate : 'php';
     }
 }

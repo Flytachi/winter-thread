@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Working;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Launch\ProcessHandle;
 use Flytachi\Winter\Thread\LaunchSpec;
 use Flytachi\Winter\Thread\Tests\Fixtures\SleepTask;
@@ -19,7 +19,7 @@ class PoolLoopTest extends TestCase
 {
     public function testReapLoopHarvestsAllWithoutZombies(): void
     {
-        $launcher = (new AdaptiveEngine())->launcher();
+        $launcher = CliLauncher::adaptive();
 
         /** @var array<int, ProcessHandle> $handles */
         $handles = [];

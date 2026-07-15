@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Working;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
-use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Tests\Fixtures\FailTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\SleepTask;
@@ -21,7 +20,7 @@ class FailureModesTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     private function runnerPath(): string
@@ -31,7 +30,7 @@ class FailureModesTest extends TestCase
 
     public function testStartWhileAliveThrows(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
         $thread = new Thread(new SleepTask(3));
         $thread->start();
 
@@ -48,29 +47,27 @@ class FailureModesTest extends TestCase
 
     public function testMissingBinaryIsNotSilentSuccess(): void
     {
-        Thread::bindEngine(
-            (new ManualEngine())
-                ->withTransport(new PipeTransport())
-                ->withBinaryPath('/nonexistent/php-xyz')
-                ->withRunnerPath($this->runnerPath()),
-        );
+        Thread::bindLauncher(new CliLauncher(
+            binaryPath: '/nonexistent/php-xyz',
+            runnerPath: $this->runnerPath(),
+            transport: new PipeTransport(),
+        ));
         $this->assertNotSilentSuccess(new Thread(new SleepTask(0)));
     }
 
     public function testMissingRunnerIsNotSilentSuccess(): void
     {
-        Thread::bindEngine(
-            (new ManualEngine())
-                ->withTransport(new PipeTransport())
-                ->withBinaryPath(PHP_BINARY)
-                ->withRunnerPath('/nonexistent/wRunner-xyz'),
-        );
+        Thread::bindLauncher(new CliLauncher(
+            binaryPath: PHP_BINARY,
+            runnerPath: '/nonexistent/wRunner-xyz',
+            transport: new PipeTransport(),
+        ));
         $this->assertNotSilentSuccess(new Thread(new SleepTask(0)));
     }
 
     public function testRunnableExceptionYieldsNonZeroExit(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
         $thread = new Thread(new FailTask());
         $thread->start();
         $this->assertNotSame(0, $thread->join(), 'a throwing Runnable must exit non-zero');
@@ -78,7 +75,7 @@ class FailureModesTest extends TestCase
 
     public function testOperationsAfterDetachAreInert(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
         $thread = new Thread(new SleepTask(0));
         $pid = $thread->start();
         $thread->detach();

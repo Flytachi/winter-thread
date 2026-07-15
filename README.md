@@ -36,7 +36,7 @@ corrupt and no inherited connections to break.
 - **Safe by Default**: Output goes to `/dev/null` by default — no Broken pipe risk for fire-and-forget jobs.
 - **Swoole / Event-Loop Compatible**: Pluggable payload transports (pipe, temp-file, shared-memory); the default engine auto-detects an active Swoole runtime and avoids fd corruption under `SWOOLE_HOOK_ALL`.
 - **Zombie-free fire-and-forget**: Optional detached mode (`fork` + `setsid`) reparents workers to init, so long-lived parents (FPM, daemons) never accumulate zombies.
-- **Pluggable Engine**: Swap the payload transport or the launcher through a single `Engine` — build custom backends (Docker, SSH, …) without touching `Thread`.
+- **Pluggable backend**: Swap the payload transport or the whole spawn strategy through a single `Launcher` — build custom backends (Docker, SSH, …) without touching `Thread`.
 - **Java-like API**: Familiar method names like `isAlive()` and `join()` for an easy learning curve.
 
 ## Requirements
@@ -98,38 +98,43 @@ $exitCode = $thread->join();
 echo "Task finished with exit code: $exitCode\n";
 ```
 
-## Configuration — the Engine
+## Configuration — the Launcher
 
-All configuration goes through a single `Engine`, bound **once at bootstrap** with
-`Thread::bindEngine()`. When you bind nothing, the **`AdaptiveEngine`** is used and
-self-configures for the current environment (CLI / FPM / Swoole).
+Configuration goes through a single `Launcher`, bound **once at bootstrap** with
+`Thread::bindLauncher()`. When you bind nothing, a self-configuring **`CliLauncher`**
+is used (`CliLauncher::adaptive()`), adapting to the current environment (CLI / FPM).
 
 ```php
-use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 
-// Zero-config: AdaptiveEngine is the default — nothing to do.
+// Zero-config: a self-configuring CliLauncher is the default — nothing to do.
 $thread = new Thread(new MyTask());
 $thread->start();
 
 // Explicit configuration when you need it:
-Thread::bindEngine(
-    (new ManualEngine())
-        ->withTransport(new TempFileTransport())
-        ->withBinaryPath('/usr/bin/php')
-        ->withRunnerPath(__DIR__ . '/vendor/flytachi/winter-thread/wRunner')
-        ->withSecurity('your-signing-secret')   // signs serialized closures
-        ->withLauncher(new MyCustomLauncher())   // optional: custom backend
-);
+Thread::bindLauncher(new CliLauncher(
+    binaryPath: '/usr/bin/php',
+    runnerPath: __DIR__ . '/vendor/flytachi/winter-thread/wRunner',
+    transport:  new TempFileTransport(),      // omit to auto-detect per launch
+    secret:     'your-signing-secret',        // signs serialized closures
+));
+
+// Custom backend (Docker/SSH/…): implement Launcher and bind it directly.
+Thread::bindLauncher(new MyCustomLauncher());
 ```
 
 ### Swoole / Event-Loop Compatibility
 
-Under **Swoole** with `SWOOLE_HOOK_ALL`, stdin pipes created by `proc_open` are intercepted
-and their file descriptors leak into Swoole's internal table, causing `Bad file descriptor`
-errors. The `AdaptiveEngine` **detects an active Swoole runtime automatically** and switches
-to a file/shared-memory transport, so no configuration is needed. Under Swoole, also prefer
-file output over `outputTarget: null` (the output pipes are subject to the same hooks).
+When its transport is left unset, `CliLauncher::adaptive()` picks a **pipe-free**
+transport (`TempFileTransport`) if it detects an active Swoole runtime — pipe file
+descriptors from `proc_open` do not survive `SWOOLE_HOOK_ALL` intact.
+
+> **Swoole support is under active development.** A safe transport is necessary but
+> not sufficient for running from *inside a live Swoole coroutine worker*: native
+> `proc_open` contends with the Swoole reactor over the process file-descriptor
+> table. Treat in-coroutine dispatch as experimental for now. Plain CLI and FPM are
+> unaffected. See [docs/08](docs/08-payload-transports.md#swoole--event-loop-compatibility).
 
 | Transport | Delivery | Parent pipe fd | Requires |
 |---|---|---|---|
@@ -216,7 +221,7 @@ Full documentation lives in [`/docs`](docs/README.md):
 4. [Basic Usage](docs/04-basic-usage.md)
 5. [Output & Debugging](docs/05-output-and-debugging.md)
 6. [Process Control & Lifecycle](docs/06-process-control.md) — signals, graceful shutdown
-7. [The Engine](docs/07-the-engine.md)
+7. [The Launcher](docs/07-the-launcher.md)
 8. [Payload Transports](docs/08-payload-transports.md)
 9. [Detached Mode](docs/09-detached-mode.md)
 10. [Security](docs/10-security.md)

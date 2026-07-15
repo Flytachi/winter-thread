@@ -2,30 +2,30 @@
 declare(strict_types=1);
 namespace Flytachi\Winter\Thread\Tests\Base\Launch;
 
-use Flytachi\Winter\Thread\Launch\ProcessHandle;
+use Flytachi\Winter\Thread\Launch\CliProcessHandle;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\StagedPayload;
 use PHPUnit\Framework\TestCase;
 
-class ProcessHandleTest extends TestCase
+class CliProcessHandleTest extends TestCase
 {
-    private function handleFor(string $cmd): ProcessHandle
+    private function handleFor(string $cmd): CliProcessHandle
     {
         $desc = [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'a'], 2 => ['file', '/dev/null', 'a']];
         $pipes = [];
         $proc = proc_open($cmd, $desc, $pipes);
         $status = proc_get_status($proc);
-        return new ProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
+        return new CliProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
     }
 
     /** Handle whose STDOUT/STDERR are pipes back to us (the outputTarget: null wiring). */
-    private function pipedHandleFor(string $cmd): ProcessHandle
+    private function pipedHandleFor(string $cmd): CliProcessHandle
     {
         $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $pipes = [];
         $proc = proc_open($cmd, $desc, $pipes);
         $status = proc_get_status($proc);
-        return new ProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
+        return new CliProcessHandle($proc, $pipes, $status['pid'], new PipeTransport(), new StagedPayload(['pipe', 'r']));
     }
 
     public function testJoinDrainsLargePipeOutputWithoutDeadlock(): void

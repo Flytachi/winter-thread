@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Working;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Tests\Fixtures\EchoTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\SleepTask;
 use Flytachi\Winter\Thread\Thread;
@@ -14,19 +14,19 @@ class ThreadFacadeTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     public function testDefaultEngineIsAdaptive(): void
     {
-        $this->assertInstanceOf(AdaptiveEngine::class, Thread::engine());
+        $this->assertInstanceOf(CliLauncher::class, Thread::launcher());
     }
 
     public function testBindEngineIsUsed(): void
     {
-        $spy = new AdaptiveEngine();
-        Thread::bindEngine($spy);
-        $this->assertSame($spy, Thread::engine());
+        $spy = CliLauncher::adaptive();
+        Thread::bindLauncher($spy);
+        $this->assertSame($spy, Thread::launcher());
     }
 
     public function testStartJoinRoundTripThroughFacade(): void

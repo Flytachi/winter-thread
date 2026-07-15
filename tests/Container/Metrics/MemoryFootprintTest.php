@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Metrics;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
-use Flytachi\Winter\Thread\Engine\Engine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
+use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Tests\Container\LeanWorker;
 use Flytachi\Winter\Thread\Tests\Fixtures\MemoryReportTask;
 use Flytachi\Winter\Thread\Thread;
@@ -26,12 +26,12 @@ class MemoryFootprintTest extends TestCase
 
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
-    private function workerRssMb(Engine $engine, string $blob): float
+    private function workerRssMb(Launcher $launcher, string $blob): float
     {
-        Thread::bindEngine($engine);
+        Thread::bindLauncher($launcher);
         $out = sys_get_temp_dir() . '/wt-rss-' . uniqid('', true) . '.txt';
         $thread = new Thread(new MemoryReportTask($blob, $out));
         $thread->start();
@@ -48,13 +48,13 @@ class MemoryFootprintTest extends TestCase
             '1 MB'  => str_repeat('x', 1024 * 1024),
             '8 MB'  => str_repeat('x', 8 * 1024 * 1024),
         ];
-        $engines = [
-            'default build' => fn(): Engine => new AdaptiveEngine(),
-            'lean (php -n)' => fn(): Engine => $this->leanEngine(),
+        $launchers = [
+            'default build' => fn(): Launcher => CliLauncher::adaptive(),
+            'lean (php -n)' => fn(): Launcher => $this->leanLauncher(),
         ];
 
         fwrite(STDOUT, "\n  --- winter-thread worker RSS ---\n");
-        foreach ($engines as $engineLabel => $factory) {
+        foreach ($launchers as $engineLabel => $factory) {
             foreach ($payloads as $payloadLabel => $blob) {
                 $mb = $this->workerRssMb($factory(), $blob);
                 fwrite(STDOUT, sprintf("  %-14s %-5s -> %5.1f MB\n", $engineLabel, $payloadLabel, $mb));
