@@ -25,11 +25,10 @@ Unit-level tests for each building block:
 
 | Test | Covers |
 |---|---|
-| `Engine/EngineTest` | `AdaptiveEngine` detection/overrides & `ManualEngine` withers + unset-part throws |
-| `Launch/CliLauncherTest` | command building, escaping, env, start-failure handling |
-| `Launch/ProcessHandleTest` | `reap`/`join`/`detach`/destructor semantics & the non-blocking guarantee |
+| `Launch/CliLauncherTest` | command building, escaping, env, start-failure handling, `adaptive()`/`security()` |
+| `Launch/CliProcessHandleTest` | `reap`/`join`/`detach`/destructor semantics & the non-blocking guarantee |
 | `LaunchSpecTest` | the launch DTO defaults/values |
-| `Payload/PipeTransportTest`, `TempFileTransportTest`, `ShmTransportTest`, `StagedPayloadTest` | each transport's stage/receive/cleanup (shm self-skips without `ext-shmop`) |
+| `Payload/PipeTransportTest`, `TempFileTransportTest`, `ShmTransportTest`, `StagedPayloadTest` | each transport's stage/cleanup (shm self-skips without `ext-shmop`) |
 | `Runner/AdaptiveRunnerTest` | receive → deserialize/verify → run, and the failure exits |
 
 ### `working` — real end-to-end scenarios (`tests/Working`)

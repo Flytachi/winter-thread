@@ -1,9 +1,10 @@
 # 8. Payload Transports
 
-To run your task in another process, the engine must move the serialized
+To run your task in another process, the launcher must move the serialized
 `Runnable` from the parent to the child. That delivery is a pluggable
-**transport**. Three ship with the library, all interchangeable — your task code
-never knows which was used, and all three deliver the **exact same bytes**.
+**transport** — a parent-side staging strategy. Three ship with the library, all
+interchangeable — your task code never knows which was used, and all three deliver
+the **exact same bytes**.
 
 ## The three transports
 
@@ -31,26 +32,25 @@ never knows which was used, and all three deliver the **exact same bytes**.
 The parent's chosen transport determines *staging*, but the **child** picks how to
 *receive* purely from CLI options: if `--shmkey` is present it reads shared memory,
 otherwise it reads STDIN. Because Pipe and TempFile both arrive on STDIN, the
-child treats them identically. This options-driven receive is why the engine never
-needs to serialize the transport choice itself — parent and child stay consistent
-automatically.
+child treats them identically. This options-driven receive is why the transport is
+a **parent-only** concern with no child-side half — parent and child stay
+consistent automatically, without shipping the transport choice across the boundary.
 
 ## Choosing a transport
 
-Bind an engine with the transport you want:
+Bind a launcher with the transport you want:
 
 ```php
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 
-Thread::bindEngine(new AdaptiveEngine(transport: new TempFileTransport()));
+Thread::bindLauncher(CliLauncher::adaptive(transport: new TempFileTransport()));
 ```
 
-In normal CLI you rarely need to — the default pipe transport is fine. Pick a
-different one when:
+In normal CLI you rarely need to — the default pipe transport is fine (and when
+you leave the transport unset, it is auto-detected per launch). Pick a specific
+one when:
 
-- **You run under Swoole** — the `AdaptiveEngine` already switches to TempFile
-  automatically (below); you only override if you specifically want Shm.
 - **You want nothing on disk, ever** — use `ShmTransport` (RAM only). Requires
   `ext-shmop`.
 - **Your `/tmp` is unusual** (tiny tmpfs, noexec, restricted `open_basedir`) —
@@ -72,55 +72,42 @@ byte-for-byte); they differ only in mechanism and prerequisites.
 
 ## Swoole / event-loop compatibility
 
-Under **Swoole** with `SWOOLE_HOOK_ALL`, the runtime intercepts stream functions.
-Pipe file descriptors created by `proc_open` get captured into Swoole's internal
-table, which later causes `Bad file descriptor` errors. The fix is to **not use
-pipe fds for the payload** — i.e. use TempFile or Shm.
+When it leaves the transport unset, `CliLauncher::adaptive()` picks a **pipe-free**
+transport (`TempFileTransport`) if it detects an active Swoole runtime — inside a
+coroutine (`\Swoole\Coroutine::getCid() !== -1`) or with runtime hooks enabled
+(`\Swoole\Runtime::getHookFlags() !== 0`). The rationale: under `SWOOLE_HOOK_ALL`
+the runtime intercepts stream functions, and pipe file descriptors from
+`proc_open` do not survive that intact. Detection is guarded by
+`extension_loaded('swoole')`, so a non-Swoole app is never affected, and it keys
+on an **active** runtime — a dormant extension does not force TempFile.
 
-The `AdaptiveEngine` handles this for you: it switches to `TempFileTransport`
-automatically when it detects an active Swoole runtime — either inside a coroutine
-(`\Swoole\Coroutine::getCid() !== -1`) or with runtime hooks enabled
-(`\Swoole\Runtime::getHookFlags() !== 0`). No configuration required:
-
-```php
-// Under an active Swoole runtime, this transparently uses TempFile:
-$thread = new Thread(new MyTask());
-$thread->start();
-```
-
-Two caveats remain under Swoole:
-
-1. **Output pipes.** The transport fix covers the *payload* (fd 0). If you start
-   with `outputTarget: null`, the *output* pipes (fd 1/2) are subject to the same
-   corruption. Prefer **file output** (a path, or `/dev/null`) under Swoole rather
-   than `null`. See [5. Output & Debugging](05-output-and-debugging.md).
-2. **Dispatch from a coroutine.** Swoole also hooks `proc_open` itself
-   (`SWOOLE_HOOK_PROC`), which requires a coroutine context. Launch tasks from
-   inside a coroutine — the normal case in a Swoole app.
-
-> Detection is guarded by `extension_loaded('swoole')`, so none of this touches a
-> non-Swoole app: without the extension the engine always uses Pipe. And note the
-> switch keys on an **active** runtime — merely having the extension installed but
-> dormant does not force TempFile.
+> **Status: Swoole support is under active development.** Choosing a pipe-free
+> transport is necessary but **not sufficient** for running winter-thread from
+> *inside a live Swoole coroutine worker*: native `proc_open` contends with the
+> Swoole reactor over the process file-descriptor table, and spawning a subprocess
+> from a hooked coroutine has limitations that no transport choice resolves on its
+> own. Treat in-coroutine dispatch as experimental for now. A robust, documented
+> pattern (spawning from outside the reactor) is being worked on — this section
+> will be updated when it lands. Plain CLI and FPM are unaffected.
 
 ## How a transport works (internally)
 
-A transport is two cooperating halves across two processes, plus a parent-side
-cleanup:
+A transport is a **parent-only** strategy — `stage()` prepares delivery, `cleanup()`
+releases it. There is no child-side method: the child reads the payload itself
+(STDIN, or the shm segment named by `--shmkey`) inside the
+[`AdaptiveRunner`](11-architecture.md).
 
-- **Parent — `stage($payload): StagedPayload`** — prepares delivery and returns a
+- **`stage($payload): StagedPayload`** — prepares delivery and returns a
   [`StagedPayload`](../src/Payload/StagedPayload.php) describing the fd-0
   descriptor (`stdinSpec`), any extra CLI args (e.g. `--shmkey=123`), an optional
   `pipePayload` to write after launch (pipe transport), an optional
   `unlinkAfterOpen` path (temp-file transport), and an opaque `ref` used for
   cleanup.
-- **Child — `receive($options): string`** — reads the payload back (from STDIN, or
-  from the shm segment named by `--shmkey`) and returns the serialized bytes.
-- **Parent — `cleanup($staged): void`** — releases the temp file or shm segment.
-  It is a **fallback**: normally the child already consumed/deleted the resource
-  (temp file unlinked right after launch, shm deleted on read), and `cleanup()`
-  runs when the handle finishes to catch the case where the child never got that
-  far. It is always safe to call, even if the resource is already gone.
+- **`cleanup($staged): void`** — releases the temp file or shm segment. It is a
+  **fallback**: normally the resource is already consumed (temp file unlinked
+  after launch, shm deleted by the child on read), and `cleanup()` runs when the
+  handle finishes to catch the case where the child never got that far. It is
+  always safe to call, even if the resource is already gone.
 
 The launcher reads the `StagedPayload` **generically** — it doesn't know which
 transport produced it — which keeps the **parent side** fully generic. See
@@ -128,29 +115,29 @@ transport produced it — which keeps the **parent side** fully generic. See
 
 ## Writing your own transport
 
-Implement [`PayloadTransport`](../src/Payload/PayloadTransport.php) — `stage`,
-`receive`, `cleanup` — and bind it via an engine. **But mind the child side:** the
-default [`AdaptiveRunner`](14-api-reference.md#adaptiverunner-final-readonly-class)
-receives the payload from **STDIN** (or shared memory when `--shmkey` is present) —
-it does **not** call your transport's `receive()`. So two cases differ sharply:
+Implement [`PayloadTransport`](../src/Payload/PayloadTransport.php) — `stage` and
+`cleanup` — and bind a launcher that uses it. **But mind the child side:** the
+default [`AdaptiveRunner`](14-api-reference.md#adaptiverunner-readonly-class)
+reads the payload from **STDIN** (or shared memory when `--shmkey` is present). So
+two cases differ sharply:
 
 - **Delivering on the child's stdin (fd 0)** — a different way of putting bytes on
-  stdin. This works transparently: your `stage()` sets the fd-0 descriptor and the
-  child reads STDIN as usual; `receive()` is effectively unused. (This is exactly
-  how the built-in pipe and temp-file transports both work.)
+  stdin (encryption, compression, a different temp location). This works with the
+  stock runner: your `stage()` sets the fd-0 descriptor and the child reads STDIN
+  as usual — **no child-side change needed**. (This is exactly how the built-in
+  pipe and temp-file transports both work.)
 - **Delivering out-of-band** — a Redis key, a TCP socket, a named FIFO: anything
-  *not* on stdin/shm. `stage()` runs in the parent, but the default runner won't
-  call your `receive()`, so the child reads an empty STDIN and fails with
-  *"No payload received"*. To use such a transport you must **also ship a matching
-  child runner** — your own bootstrap (like `wRunner`) that invokes your
-  transport's `receive()` — typically launched by a
-  [custom `Launcher`](14-api-reference.md#launcher-interface). Parent (`Engine`)
-  and child (`Runner`) are independent by design; see
-  [11. Architecture](11-architecture.md).
+  *not* on stdin/shm. Here the child must be taught how to read it: subclass
+  `AdaptiveRunner` and override its protected `receive()` (delegating to
+  `parent::receive()` for the built-in cases), or write your own `Runner`, and
+  point a [custom `Launcher`](14-api-reference.md#launcher-interface) at a
+  bootstrap that uses it. Launcher (parent) and Runner (child) are independent by
+  design; see [11. Architecture](11-architecture.md).
 
 Two more things to keep in mind:
 
-- **`stage()` and `receive()` run in different processes**, coordinating only
-  through the `StagedPayload`'s CLI args or a channel both sides can name.
+- **`stage()` runs in the parent; the child reads independently** — they
+  coordinate only through the `StagedPayload`'s CLI args or a channel both sides
+  can name.
 - Keep the delivery channel **private** (owner-only) — the payload is the
   deserialization trust boundary. See [10. Security](10-security.md).

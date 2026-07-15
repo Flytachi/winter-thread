@@ -15,10 +15,10 @@ to your `outputTarget` (a file, or the parent pipes when `null`; nowhere if
 | `failed to deserialize payload` | secret mismatch / tampered payload | [Payload rejected](#payload-rejected) |
 | Zombies pile up under a daemon/FPM | long-lived parent never reaps | [Zombies](#zombie-processes-accumulate) |
 | Job stalls or vanishes silently | `null` output pipe never drained | [Broken pipe](#task-stalls-or-dies-silently-broken-pipe) |
-| `Bad file descriptor` under Swoole | pipe transport under hooks | [Swoole](#bad-file-descriptor-under-swoole) |
+| `Bad file descriptor` under Swoole | in-coroutine spawn vs the reactor (known limitation) | [Swoole](#bad-file-descriptor-under-swoole) |
 | `$args` missing a value you passed | `false`/`null`/non-scalar dropped | [Arguments](#an-argument-is-missing-in-args) |
 | `ShmTransport requires ext-shmop` | extension not loaded | [shmop](#shmtransport-requires-ext-shmop) |
-| `ManualEngine: … is not configured` | a required part unset | [ManualEngine](#manualengine--is-not-configured) |
+| `CliLauncher` missing binary/runner path | required arg unset in explicit construction | [CliLauncher](#clilauncher--missing-binary-or-runner-path) |
 | Signals seem ignored | a handler that never exits, or wrong PID | [Signals](#signals-seem-to-do-nothing) |
 
 ## `start()` throws `ThreadException`
@@ -31,16 +31,17 @@ Causes and fixes:
 - **`proc_open` is disabled.** Check `disable_functions` in `php.ini`. It must not
   list `proc_open`. Verify: `php -r "var_dump(function_exists('proc_open'));"`.
 - **Wrong PHP binary** (common under **FPM**). `PHP_BINARY` under FPM is the FPM
-  binary, not a CLI one. The [`AdaptiveEngine`](07-the-engine.md) resolves a CLI
-  binary automatically, but if it guessed wrong, set it explicitly:
+  binary, not a CLI one. [`CliLauncher::adaptive()`](07-the-launcher.md) resolves a
+  CLI binary automatically, but if it guessed wrong, set it explicitly:
   ```php
-  Thread::bindEngine((new ManualEngine())
-      ->withBinaryPath('/usr/bin/php')
-      ->withRunnerPath(__DIR__ . '/vendor/flytachi/winter-thread/wRunner')
-      ->withTransport(new \Flytachi\Winter\Thread\Payload\PipeTransport()));
+  Thread::bindLauncher(new CliLauncher(
+      binaryPath: '/usr/bin/php',
+      runnerPath: __DIR__ . '/vendor/flytachi/winter-thread/wRunner',
+      transport:  new \Flytachi\Winter\Thread\Payload\PipeTransport(),
+  ));
   ```
 - **Bad/inaccessible runner path** (phar, relocated vendor, `open_basedir`). Point
-  `->withRunnerPath()` at a real on-disk `wRunner`. See
+  the `runnerPath:` argument at a real on-disk `wRunner`. See
   [2. Installation](02-installation-and-requirements.md#the-runner-path-wrunner).
 
 Also: **"Thread is already running; join()/reap() it or create a new Thread before
@@ -109,17 +110,16 @@ You started with `outputTarget: null` and the job hangs or disappears with no er
 
 ## `Bad file descriptor` under Swoole
 
-Under Swoole with `SWOOLE_HOOK_ALL`, `proc_open` pipe fds get captured by the
-runtime.
+Spawning from **inside a live Swoole coroutine worker** can fail with
+`proc_open(): posix_spawn() failed: Bad file descriptor` (and matching
+`socket_free_defer close(...) failed` from Swoole). Native `proc_open` and the
+Swoole reactor contend over the process file-descriptor table, and no transport or
+output setting fully resolves it.
 
-- **Payload channel.** The [`AdaptiveEngine`](07-the-engine.md) switches to
-  `TempFileTransport` automatically when it detects an active Swoole runtime, so the
-  payload is safe. If you *forced* `PipeTransport`, stop doing that under Swoole.
-- **Output pipes.** `outputTarget: null` uses pipes for fd 1/2 too — prefer file
-  output under Swoole.
-- **Dispatch context.** Swoole hooks `proc_open` (`SWOOLE_HOOK_PROC`), which needs a
-  coroutine — launch from inside one. See
-  [8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility).
+This is a **known limitation** — Swoole support of in-coroutine dispatch is under
+active development. Plain CLI and FPM are unaffected. See
+[8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility)
+for the current status.
 
 ## An argument is missing in `$args`
 
@@ -139,14 +139,13 @@ the worker.
 - Install/enable `ext-shmop`, or switch to `PipeTransport`/`TempFileTransport`
   (which need no extension). See [8. Payload Transports](08-payload-transports.md).
 
-## `ManualEngine: … is not configured`
+## `CliLauncher` — missing binary or runner path
 
-You bound a `ManualEngine` but didn't set a required part.
-
-- With the default launcher, `transport`, `binaryPath` and `runnerPath` are all
-  required. Set them, or use `AdaptiveEngine` (which configures itself). With a
-  custom `withLauncher(...)`, those three aren't required. See
-  [7. The Engine](07-the-engine.md#manualengine--explicit-clean-slate).
+If you construct `CliLauncher` explicitly, `binaryPath` and `runnerPath` are
+required constructor arguments (a `null` transport is fine — it auto-detects per
+launch). If you don't want to specify them, use
+[`CliLauncher::adaptive()`](07-the-launcher.md), which resolves both from the
+environment.
 
 ## Signals seem to do nothing
 

@@ -34,23 +34,23 @@ signed with a different secret — is **rejected**: the worker writes a
 deserialization error to STDERR, exits non-zero, and **runs nothing**.
 
 ```php
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 
 // Explicit:
-Thread::bindEngine(new AdaptiveEngine(secret: 'a-long-random-secret'));
+Thread::bindLauncher(CliLauncher::adaptive(secret: 'a-long-random-secret'));
 
-// Or via the environment (picked up automatically by AdaptiveEngine):
+// Or via the environment (picked up automatically by CliLauncher::adaptive()):
 //   WINTER_THREAD_SECRET=a-long-random-secret
 ```
 
-With `ManualEngine`:
+With explicit construction:
 
 ```php
-(new ManualEngine())->withSecurity('a-long-random-secret') /* … + other parts */;
+new CliLauncher(binaryPath: '/usr/bin/php', runnerPath: '…/wRunner', secret: 'a-long-random-secret');
 ```
 
 Under the hood the secret builds an `Opis\Closure\Security\DefaultSecurityProvider`
-(returned by `Engine::security()`); the parent signs with it in
+(returned by `Launcher::security()`); the parent signs with it in
 `Thread::serialize()`, and the child verifies with it in the runner. When the
 verification fails, the runner catches the resulting exception (including Opis's
 `SecurityException`) and returns a non-zero exit code — a clean rejection, never a
@@ -127,7 +127,7 @@ quoting.
 
 ## Recommendations
 
-- **Set a secret in production** (`WINTER_THREAD_SECRET` or `withSecurity()`) —
+- **Set a secret in production** (`WINTER_THREAD_SECRET` or the `secret:` argument) —
   long and random. This upgrades the model from "trust the private channel" to
   "cryptographically verify every payload."
 - **Use the same secret in the parent and everywhere `wRunner` runs.** Locally the

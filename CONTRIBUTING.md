@@ -68,9 +68,9 @@ suite on a PHP 8.4 / 8.5 matrix, and the container suite in Docker.
 ## Project layout
 
 - `src/` — the library. `Thread` is a thin facade; the real work lives in the
-  `Engine` / `Launcher` / `Runner` / `PayloadTransport` primitives. Read
+  `Launcher` / `ProcessHandle` / `Runner` / `PayloadTransport` primitives. Read
   [docs/11 — Architecture](docs/11-architecture.md) before making structural
-  changes — note that the **parent-side `Engine`** and the **child-side `Runner`**
+  changes — note that the **parent-side `Launcher`** and the **child-side `Runner`**
   are deliberately independent.
 - `wRunner` — the child bootstrap script (packaged as `bin`).
 - `tests/` — `Base` / `Working` / `Container` tiers, plus `Fixtures` and `docker`.

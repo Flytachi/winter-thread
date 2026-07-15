@@ -12,10 +12,17 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Swoole correctness in both runtime states: inside a coroutine with hooks
- * (SWOOLE_HOOK_ALL) and with swoole loaded but dormant. In each case the payload
- * must arrive intact (CliLauncher::adaptive() picks a safe transport) and no worker
- * may linger as a zombie.
+ * Narrow smoke test: a *single* spawn inside a one-shot `Swoole\Coroutine\run`,
+ * in two runtime states — hooks on (SWOOLE_HOOK_ALL) and swoole loaded but
+ * dormant. It only asserts that `CliLauncher::adaptive()` picks a pipe-free
+ * transport so the payload arrives intact, and that no worker lingers as a zombie.
+ *
+ * This is NOT a claim that winter-thread is production-safe under Swoole. It does
+ * NOT reproduce the conditions where in-coroutine dispatch actually breaks: a
+ * long-lived server worker, active socket connections (needed for the reactor's
+ * deferred-close ↔ fd-reuse race), spawning across successive requests, or reading
+ * a child's output pipe under hooks. Green here ≠ works in a live Swoole server.
+ * Swoole support is under active development — see docs/08.
  */
 #[Group('container')]
 #[Group('swoole')]

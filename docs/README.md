@@ -10,7 +10,7 @@ You implement a `Runnable`, wrap it in a `Thread`, and `start()` it. The library
 serializes the task, spawns a **fresh PHP CLI process** (`proc_open` → the packaged
 `wRunner` bootstrap), and runs your task there — fully isolated from the parent.
 You then `join()` for the exit code, `reap()` non-blocking in a loop, or fire and
-forget. Everything configurable lives behind a single pluggable `Engine`.
+forget. How the process is launched lives behind a single pluggable `Launcher`.
 
 ## Table of contents
 
@@ -20,8 +20,8 @@ forget. Everything configurable lives behind a single pluggable `Engine`.
 4. [Basic Usage](04-basic-usage.md) — `Runnable`, `Thread`, `start()`/`join()`, arguments, exit codes
 5. [Output & Debugging](05-output-and-debugging.md) — output targets, the Broken-pipe trap, debug mode
 6. [Process Control & Lifecycle](06-process-control.md) — signals, graceful shutdown, `reap()`, `detach()`
-7. [The Engine](07-the-engine.md) — `AdaptiveEngine` / `ManualEngine`, parent-vs-child, custom launchers
-8. [Payload Transports](08-payload-transports.md) — pipe / temp-file / shm, Swoole compatibility
+7. [The Launcher](07-the-launcher.md) — `CliLauncher`, `adaptive()`, parent-vs-child, custom backends
+8. [Payload Transports](08-payload-transports.md) — pipe / temp-file / shm, transport selection
 9. [Detached Mode](09-detached-mode.md) — zombie-free fire-and-forget, container init
 10. [Security](10-security.md) — signed payloads, the trust model, object-injection defense
 11. [Architecture & Internals](11-architecture.md) — components, the two-process model, building a pool
@@ -53,9 +53,9 @@ $thread->join();    // or wait for the exit code
   risks a Broken-pipe stall. ([5](05-output-and-debugging.md))
 - **`reap()`/`detach()` never block on a live worker** — the basis for a pool
   loop. ([6](06-process-control.md), [12](12-patterns.md))
-- **`Engine` is parent-side only; the child runs a separate `AdaptiveRunner`.**
+- **`Launcher` is parent-side only; the child runs a separate `AdaptiveRunner`.**
   The signing secret reaches the child via the `WINTER_THREAD_SECRET` env var.
-  ([7](07-the-engine.md), [10](10-security.md))
+  ([7](07-the-launcher.md), [10](10-security.md))
 - **`detach()` ≠ detached mode.** Only `start(detached: true)` (fork + setsid)
   is zombie-free under a long-lived parent. ([9](09-detached-mode.md))
 

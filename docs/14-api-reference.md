@@ -16,8 +16,8 @@ supervisor directly on the raw primitives.
 |---|---|---|
 | [`Runnable`](#runnable-interface) | interface | define a task — put your logic in `run()` |
 | [`Thread`](#thread-final-class) | class | start & control one task as a background process |
-| [`Engine`](#engine-interface) | interface | configure delivery/execution once at bootstrap |
-| [`AdaptiveEngine`](#adaptiveengine-final-readonly-class-default) · [`ManualEngine`](#manualengine-final-class) | class | the two engines — self-configuring / explicit |
+| [`Launcher`](#launcher-interface) | interface | the parent-side backend, bound once at bootstrap |
+| [`CliLauncher`](#clilauncher-final-readonly-class) | class | the default launcher — `adaptive()` or explicit |
 
 ### Low-level & extension API — what you build on
 
@@ -32,9 +32,9 @@ supervisor directly on the raw primitives.
 | [`Signal`](#signal-final-class) | class | raw-PID POSIX helpers (zombie-aware) |
 | [`ThreadException`](#threadexception-class) | class | the library's only exception |
 
-The four **interfaces** (`Engine`, `Launcher`, `Runner`, `PayloadTransport`) are the
-extension points that accept your own implementation; everything else is a concrete
-type you consume.
+The four **interfaces** (`Launcher`, `ProcessHandle`, `Runner`, `PayloadTransport`)
+are the extension points that accept your own implementation; everything else is a
+concrete type you consume.
 
 ---
 
@@ -91,12 +91,12 @@ Constructing does **not** start anything. The process title is
 `WinterThread <namespace> -> <name>@<tag>` (only where `cli_set_process_title()`
 exists).
 
-#### Static — engine binding
+#### Static — launcher binding
 
 | Method | Returns | Description |
 |---|---|---|
-| `Thread::bindEngine(Engine $engine)` | `void` | set the process-wide engine (call once at bootstrap) |
-| `Thread::engine()` | `Engine` | the current engine; lazily creates a default `AdaptiveEngine` if none bound |
+| `Thread::bindLauncher(Launcher $launcher)` | `void` | set the process-wide launcher (call once at bootstrap) |
+| `Thread::launcher()` | `Launcher` | the current launcher; lazily creates a default `CliLauncher::adaptive()` if none bound |
 
 #### `start`
 
@@ -169,66 +169,6 @@ must install a handler; see
 
 ---
 
-### `Engine` (interface)
-
-`Flytachi\Winter\Thread\Engine\Engine` — the configuration/strategy root, used
-**parent-side only**. It has no child-side method: the worker runs a separate
-[`AdaptiveRunner`](#adaptiverunner-final-readonly-class). The parent's `security()`
-is propagated to the child via `WINTER_THREAD_SECRET`
-([11. Architecture](11-architecture.md)).
-
-| Method | Returns | Description |
-|---|---|---|
-| `transport()` | `PayloadTransport` | how the payload is delivered |
-| `launcher()` | `Launcher` | how the process is spawned |
-| `binaryPath()` | `string` | absolute PHP CLI binary path |
-| `runnerPath()` | `string` | absolute `wRunner` script path |
-| `security()` | `?DefaultSecurityProvider` | `Opis\Closure\Security\DefaultSecurityProvider` for signing, or `null` when no secret |
-
-#### `AdaptiveEngine` (final readonly class, default)
-
-`Flytachi\Winter\Thread\Engine\AdaptiveEngine` — self-configuring; immutable.
-
-```
-new AdaptiveEngine(
-    ?string           $secret = null,
-    ?PayloadTransport $transport = null,
-    ?string           $binaryPath = null,
-    ?string           $runnerPath = null,
-    ?Launcher         $launcher = null,
-)
-```
-
-| Parameter | Type | Resolved default when `null` |
-|---|---|---|
-| `$secret` | `?string` | the `WINTER_THREAD_SECRET` env var, else `null` (no signing) |
-| `$transport` | `?PayloadTransport` | `TempFileTransport` under an **active** Swoole runtime, else `PipeTransport` |
-| `$binaryPath` | `?string` | CLI SAPI → `PHP_BINARY`; non-CLI → `PHP_BINDIR/php` if executable, else `'php'` |
-| `$runnerPath` | `?string` | the packaged `wRunner` |
-| `$launcher` | `?Launcher` | a `CliLauncher` built from the resolved binary/runner/transport + child env |
-
-To change one aspect, construct a new instance (readonly).
-
-#### `ManualEngine` (final class)
-
-`Flytachi\Winter\Thread\Engine\ManualEngine` — explicit, clean-slate. Immutable
-withers (each returns a clone); an unset **required** part throws `ThreadException`
-when accessed.
-
-| Method | Returns | Description |
-|---|---|---|
-| `withTransport(PayloadTransport $t)` | `static` | set the transport |
-| `withBinaryPath(string $path)` | `static` | set the PHP binary path |
-| `withRunnerPath(string $path)` | `static` | set the `wRunner` path |
-| `withSecurity(string $secret)` | `static` | enable signing with this secret |
-| `withLauncher(Launcher $l)` | `static` | use a custom launcher (bypasses the default) |
-
-With a custom `withLauncher(...)`, `transport`/`binaryPath`/`runnerPath` are not
-required; otherwise all three are. `security()` returns `null` when no secret was
-set.
-
----
-
 ## Low-level & extension API
 
 For pools, schedulers, and custom backends. `Thread` is built on exactly these
@@ -236,29 +176,40 @@ pieces — you can drive them directly.
 
 ### `Launcher` (interface)
 
-`Flytachi\Winter\Thread\Launch\Launcher` — parent-side spawn strategy.
+`Flytachi\Winter\Thread\Launch\Launcher` — the parent-side backend. It spawns the
+process and owns the payload-signing secret; bind one via `Thread::bindLauncher()`.
 
 ```
 public function launch(LaunchSpec $spec): ProcessHandle
+public function security(): ?DefaultSecurityProvider
 ```
 
-| Parameter | Type | Description |
+| Method | Returns | Description |
 |---|---|---|
-| `$spec` | `LaunchSpec` | everything needed to start the process |
+| `launch(LaunchSpec $spec)` | `ProcessHandle` | spawn the process; **throws** `ThreadException` on failure |
+| `security()` | `?DefaultSecurityProvider` | provider used to sign the payload, or `null` when unsigned |
 
-**Returns** `ProcessHandle`. **Throws** `ThreadException` on failure. Implement this
-to launch over SSH, in a container, or on a remote node.
+Implement this to launch over SSH, in a container, or on a remote node — returning
+your own `ProcessHandle` implementation.
 
 #### `CliLauncher` (final readonly class)
 
 `Flytachi\Winter\Thread\Launch\CliLauncher` — the default, `proc_open`-based.
+Build it self-configured or explicitly:
 
 ```
+CliLauncher::adaptive(
+    ?string           $secret = null,      // else WINTER_THREAD_SECRET env, else no signing
+    ?PayloadTransport $transport = null,   // else auto-detected per launch()
+    ?string           $binaryPath = null,  // else the resolved PHP CLI binary
+    ?string           $runnerPath = null,  // else the packaged wRunner
+): self
+
 new CliLauncher(
-    string           $binaryPath,
-    string           $runnerPath,
-    PayloadTransport $transport,
-    array            $childEnv = [],
+    string            $binaryPath,
+    string            $runnerPath,
+    ?PayloadTransport $transport = null,   // null → auto-detected per launch()
+    ?string           $secret = null,      // null → no signing
 )
 ```
 
@@ -266,19 +217,25 @@ new CliLauncher(
 |---|---|---|---|
 | `$binaryPath` | `string` | — | PHP CLI binary |
 | `$runnerPath` | `string` | — | `wRunner` script |
-| `$transport` | `PayloadTransport` | — | how the payload is staged/received |
-| `$childEnv` | `array<string,string>` | `[]` | extra child env (e.g. `['WINTER_THREAD_SECRET' => '…']`) |
+| `$transport` | `?PayloadTransport` | `null` | payload staging; `null` auto-detects (`TempFile` under an active Swoole runtime, else `Pipe`) **on each `launch()`** |
+| `$secret` | `?string` | `null` | signing secret; injected into the child env as `WINTER_THREAD_SECRET` |
 
-Builds a fully `escapeshellarg`-escaped command. Empty `$childEnv` → the child
-**inherits** the parent env; non-empty → merged **over** the inherited env.
+Builds a fully `escapeshellarg`-escaped command. The signing secret (and the
+ambient-secret neutralization when unsigned) is handled internally, so the child
+env is derived from `$secret`. `adaptive()` resolves the binary/runner/secret from
+the environment eagerly; the transport is resolved per launch (so binding during
+preload picks the right transport once a worker/coroutine exists).
 
 ---
 
-### `ProcessHandle` (final class)
+### `ProcessHandle` (interface)
 
-`Flytachi\Winter\Thread\Launch\ProcessHandle` — the low-level process primitive a
-launcher returns. **Mutable**; tracks process/pipes/exit-code state. Not
-constructed directly — obtained from `Launcher::launch()`.
+`Flytachi\Winter\Thread\Launch\ProcessHandle` — the parent-side control contract a
+launcher returns. Programming against it (not a concrete class) is what lets the
+process backend be swapped. The default `CliLauncher` returns a **`CliProcessHandle`**
+(`final class`, `proc_open`-backed, mutable — tracks process/pipes/exit-code);
+custom launchers return their own implementation. Not constructed directly —
+obtained from `Launcher::launch()`.
 
 | Method | Returns | Description |
 |---|---|---|
@@ -412,7 +369,7 @@ public function execute(array $options): int
 
 `Flytachi\Winter\Thread\Runner\AdaptiveRunner` — the default child-side runner
 (driven by `wRunner`). It depends only on a security provider — **not** on the
-`Engine` — so the two sides stay independent.
+`Launcher` — so the two sides stay independent.
 
 ```
 new AdaptiveRunner(?DefaultSecurityProvider $security = null, mixed $errStream = null)
@@ -430,8 +387,8 @@ unsigned/tampered payloads with a non-zero exit) → optional `fork`+`setsid`
 
 > To use a **custom** `Runner`, you replace the child bootstrap: write your own
 > script like `wRunner` that constructs your runner (typically launched by a
-> [custom `Launcher`](#launcher-interface)). There is no `bindEngine` seam for the
-> runner — by design, the child side is independent of the parent's `Engine`.
+> [custom `Launcher`](#launcher-interface)). There is no binding seam for the
+> runner — by design, the child side is independent of the parent's `Launcher`.
 
 ---
 
@@ -470,6 +427,6 @@ unsigned/tampered payloads with a non-zero exit) → optional `fork`+`setsid`
 only exception type.
 
 Thrown on: launch failure (`proc_open` denied, or the process died immediately),
-starting an already-running `Thread`, misconfiguration (an unset `ManualEngine`
-part, or `ShmTransport` without `ext-shmop`), and transport staging failures (temp
-file / shm allocation). Catch it around `start()` and engine setup.
+starting an already-running `Thread`, misconfiguration (`ShmTransport` without
+`ext-shmop`), and transport staging failures (temp file / shm allocation). Catch it
+around `start()` and launcher setup.
