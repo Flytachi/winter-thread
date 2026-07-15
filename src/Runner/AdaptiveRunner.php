@@ -106,8 +106,8 @@ readonly class AdaptiveRunner implements Runner
             try {
                 $this->daemonize();
             } catch (ThreadException $e) {
-                fwrite($this->stderr(), "Error: ". $e->getMessage() . "\n");
-                exit(1);
+                fwrite($this->stderr(), 'Error: ' . $e->getMessage() . "\n");
+                return 1;
             }
         }
 
