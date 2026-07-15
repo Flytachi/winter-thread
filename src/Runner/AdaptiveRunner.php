@@ -26,7 +26,7 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  *
  * @see Runner
  */
-final readonly class AdaptiveRunner implements Runner
+readonly class AdaptiveRunner implements Runner
 {
     /**
      * @param DefaultSecurityProvider|null $security  Verifies the payload signature — construct it
@@ -60,6 +60,16 @@ final readonly class AdaptiveRunner implements Runner
 
     public function execute(array $options): int
     {
+        if (isset($options['debug'])) {
+            error_reporting(E_ALL);
+            ini_set('display_errors', 1);
+            ini_set('display_startup_errors', 1);
+        } else {
+            error_reporting(0);
+            ini_set('display_errors', 0);
+            ini_set('display_startup_errors', 0);
+        }
+
         try {
             $payload = $this->receive($options);
         } catch (\Throwable $e) {
@@ -114,7 +124,7 @@ final readonly class AdaptiveRunner implements Runner
      * otherwise the payload is on STDIN (pipe and temp-file deliveries are
      * identical from the child's view).
      */
-    private function receive(array $options): string
+    protected function receive(array $options): string
     {
         if (isset($options['shmkey'])) {
             return $this->receiveShm((int) $options['shmkey']);
@@ -155,7 +165,7 @@ final readonly class AdaptiveRunner implements Runner
         }
     }
 
-    private function setProcessTitle(array $options, Runnable $runnable): void
+    protected function setProcessTitle(array $options, Runnable $runnable): void
     {
         if (!function_exists('cli_set_process_title')) {
             return;
