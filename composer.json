@@ -34,7 +34,8 @@
         "squizlabs/php_codesniffer": "^4.0"
     },
     "suggest": {
-        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)"
+        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)",
+        "ext-swoole": "Required for SwooleLauncher (coroutine-safe process backend under a Swoole runtime)"
     },
     "homepage": "https://winterframe.net",
     "support": {

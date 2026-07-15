@@ -42,10 +42,17 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  */
 final readonly class CliLauncher implements Launcher
 {
+    /**
+     * @param PayloadTransport|null $transport A fixed transport, or `null` to
+     *        auto-detect one per launch (see {@see launch()}). Detection is
+     *        deferred to launch time on purpose: the Swoole runtime may be
+     *        inactive when the launcher is built (e.g. bound during preload) yet
+     *        active when a task is actually started (inside a worker/coroutine).
+     */
     public function __construct(
         private string $binaryPath,
         private string $runnerPath,
-        private PayloadTransport $transport,
+        private ?PayloadTransport $transport = null,
         private ?string $secret = null,
     ) {
     }
@@ -53,11 +60,17 @@ final readonly class CliLauncher implements Launcher
     /**
      * Self-configuring factory — detects sensible defaults for the current
      * environment, all overridable per argument:
-     * - transport: {@see TempFileTransport} under an active Swoole runtime,
-     *   otherwise {@see PipeTransport};
+     * - transport: left to per-launch auto-detection ({@see TempFileTransport}
+     *   under an active Swoole runtime, otherwise {@see PipeTransport}) unless an
+     *   explicit one is given;
      * - binary path: the real PHP CLI binary (correct even under FPM/CGI);
      * - runner path: the packaged `wRunner`;
      * - secret: the explicit argument, else `WINTER_THREAD_SECRET`, else none.
+     *
+     * The binary path and secret are read from the stable environment eagerly; the
+     * transport is intentionally NOT resolved here, so binding this launcher during
+     * preload (before the Swoole runtime is up) still yields the correct transport
+     * once tasks run inside a worker/coroutine.
      */
     public static function adaptive(
         ?string $secret = null,
@@ -68,7 +81,7 @@ final readonly class CliLauncher implements Launcher
         return new self(
             binaryPath: $binaryPath ?? self::detectBinaryPath(),
             runnerPath: $runnerPath ?? (dirname(__DIR__, 2) . '/wRunner'),
-            transport: $transport ?? self::detectTransport(),
+            transport: $transport,
             secret: $secret ?? (getenv('WINTER_THREAD_SECRET') ?: null),
         );
     }
@@ -80,7 +93,11 @@ final readonly class CliLauncher implements Launcher
 
     public function launch(LaunchSpec $spec): ProcessHandle
     {
-        $staged = $this->transport->stage($spec->payload);
+        // Resolve the transport HERE, not at construction: under Swoole the runtime
+        // may only be active (coroutine/hooks up) by the time a task is launched,
+        // long after this launcher was built. A null transport means auto-detect.
+        $transport = $this->transport ?? self::detectTransport();
+        $staged = $transport->stage($spec->payload);
 
         $descriptors = [0 => $staged->stdinSpec];
         if ($spec->output !== null) {
@@ -95,7 +112,7 @@ final readonly class CliLauncher implements Launcher
         $process = proc_open($this->buildCommand($spec, $staged), $descriptors, $pipes, null, $this->childEnv());
 
         if (!is_resource($process)) {
-            $this->transport->cleanup($staged);
+            $transport->cleanup($staged);
             throw new ThreadException('Failed to start the process using proc_open.');
         }
 
@@ -119,11 +136,11 @@ final readonly class CliLauncher implements Launcher
                 }
             }
             proc_close($process);
-            $this->transport->cleanup($staged);
+            $transport->cleanup($staged);
             throw new ThreadException('Process failed to start or terminated immediately.');
         }
 
-        return new ProcessHandle($process, $pipes, $status['pid'], $this->transport, $staged);
+        return new CliProcessHandle($process, $pipes, $status['pid'], $transport, $staged);
     }
 
     /**
