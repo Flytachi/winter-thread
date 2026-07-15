@@ -36,8 +36,8 @@ readonly class AdaptiveRunner implements Runner
      *                                                 STDERR. Injectable so tests can capture output.
      */
     public function __construct(
-        private ?DefaultSecurityProvider $security = null,
-        private mixed $errStream = null,
+        protected ?DefaultSecurityProvider $security = null,
+        protected mixed $errStream = null,
     ) {
     }
 
@@ -47,10 +47,10 @@ readonly class AdaptiveRunner implements Runner
      * signature verifier from `WINTER_THREAD_SECRET` (owner-only environment, set
      * by the parent launcher), or none when unset/blanked.
      */
-    public static function adaptive(): self
+    public static function adaptive(): static
     {
         $secret = getenv('WINTER_THREAD_SECRET') ?: null;
-        return new self($secret !== null ? new DefaultSecurityProvider(secret: $secret) : null);
+        return new static($secret !== null ? new DefaultSecurityProvider(secret: $secret) : null);
     }
 
     final protected function stderr(): mixed
