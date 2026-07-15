@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Workload;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
 use Flytachi\Winter\Thread\Tests\Fixtures\BatchSumTask;
 use Flytachi\Winter\Thread\Tests\Fixtures\FileIoTask;
@@ -25,7 +25,7 @@ class BattleRunTest extends TestCase
 
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     public function testDiverseWorkloadsInParallel(): void

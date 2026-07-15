@@ -34,11 +34,6 @@ final class TempFileTransport implements PayloadTransport
         );
     }
 
-    public function receive(array $options): string
-    {
-        return (string) stream_get_contents(STDIN);
-    }
-
     public function cleanup(StagedPayload $staged): void
     {
         if (is_string($staged->ref) && is_file($staged->ref)) {

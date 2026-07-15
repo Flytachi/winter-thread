@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Swoole;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
 use Flytachi\Winter\Thread\Tests\Fixtures\PayloadProbeTask;
 use Flytachi\Winter\Thread\Thread;
@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Swoole correctness in both runtime states: inside a coroutine with hooks
  * (SWOOLE_HOOK_ALL) and with swoole loaded but dormant. In each case the payload
- * must arrive intact (the AdaptiveEngine picks a safe transport) and no worker
+ * must arrive intact (CliLauncher::adaptive() picks a safe transport) and no worker
  * may linger as a zombie.
  */
 #[Group('container')]
@@ -35,13 +35,13 @@ class SwooleScenariosTest extends TestCase
         if (class_exists('\Swoole\Runtime')) {
             \Swoole\Runtime::enableCoroutine(0);
         }
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     private function spawnProbe(): ?string
     {
         $out = sys_get_temp_dir() . '/wt-sw-' . uniqid('', true) . '.txt';
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
         $thread = new Thread(new PayloadProbeTask($out));
         $thread->start();
         $thread->join();

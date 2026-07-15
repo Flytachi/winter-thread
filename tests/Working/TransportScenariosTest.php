@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Working;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
@@ -23,7 +23,7 @@ class TransportScenariosTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     /** @return array<string, array{class-string, bool}> */
@@ -41,7 +41,7 @@ class TransportScenariosTest extends TestCase
         if ($needsShmop && !extension_loaded('shmop')) {
             $this->markTestSkipped('ext-shmop not available.');
         }
-        Thread::bindEngine(new AdaptiveEngine(transport: new $transportClass()));
+        Thread::bindLauncher(CliLauncher::adaptive(transport: new $transportClass()));
     }
 
     #[DataProvider('transportProvider')]

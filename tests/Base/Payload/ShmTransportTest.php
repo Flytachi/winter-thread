@@ -14,7 +14,7 @@ class ShmTransportTest extends TestCase
         }
     }
 
-    public function testRoundTrip(): void
+    public function testStageAllocatesSegmentAndCleansUp(): void
     {
         $t = new ShmTransport();
         $staged = $t->stage('SHM-PAYLOAD');
@@ -23,12 +23,13 @@ class ShmTransportTest extends TestCase
         $this->assertMatchesRegularExpression('/^--shmkey=\d+$/', $staged->cliArgs[0]);
         $key = $staged->ref;
 
-        // child side: receive reads and deletes the segment
-        $got = $t->receive(['shmkey' => (string) $key]);
-        $this->assertSame('SHM-PAYLOAD', $got);
+        // The segment holds the payload until the child (AdaptiveRunner) reads it;
+        // read it back here directly to confirm staging wrote it.
+        $shm = shmop_open($key, 'a', 0, 0);
+        $this->assertSame('SHM-PAYLOAD', shmop_read($shm, 0, shmop_size($shm)));
 
-        // segment gone → cleanup is a safe no-op
+        // cleanup deletes the still-present segment without error.
         $t->cleanup($staged);
-        $this->assertTrue(true);
+        $this->assertFalse(@shmop_open($key, 'a', 0, 0));
     }
 }

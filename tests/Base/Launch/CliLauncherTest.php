@@ -5,6 +5,7 @@ namespace Flytachi\Winter\Thread\Tests\Base\Launch;
 use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\LaunchSpec;
 use Flytachi\Winter\Thread\Payload\PipeTransport;
+use Opis\Closure\Security\DefaultSecurityProvider;
 use PHPUnit\Framework\TestCase;
 
 class CliLauncherTest extends TestCase
@@ -45,5 +46,26 @@ PHP);
 
         $this->assertSame('HELLO|JobX', file_get_contents($outFile));
         unlink($outFile);
+    }
+
+    public function testUnsignedLauncherHasNoSecurityProvider(): void
+    {
+        $launcher = new CliLauncher('php', 'wRunner', new PipeTransport());
+        $this->assertNull($launcher->security());
+    }
+
+    public function testSignedLauncherExposesSecurityProvider(): void
+    {
+        $launcher = new CliLauncher('php', 'wRunner', new PipeTransport(), secret: 's3cr3t');
+        $this->assertInstanceOf(DefaultSecurityProvider::class, $launcher->security());
+    }
+
+    public function testAdaptiveHonorsExplicitSecret(): void
+    {
+        // An explicit secret argument wins regardless of the environment.
+        $this->assertInstanceOf(
+            DefaultSecurityProvider::class,
+            CliLauncher::adaptive(secret: 's3cr3t')->security(),
+        );
     }
 }

@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
-use Flytachi\Winter\Thread\Engine\Engine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
+use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Launch\ProcessHandle;
 
 /**
  * Manages and controls a single, independent task running in a separate PHP process.
  *
  * This class provides a high-level, Java-like API for creating and managing
- * background processes. It is a thin facade over the configured {@see Engine}, which
- * chooses the payload transport and the launcher. By default an {@see AdaptiveEngine}
- * is used, so `new Thread(...)->start()` works out of the box.
+ * background processes. It is a thin facade over the configured {@see Launcher},
+ * which spawns the process and holds the payload-signing secret. By default a
+ * self-configuring {@see CliLauncher} is used, so `new Thread(...)->start()` works
+ * out of the box.
  *
  * ---
  * ### Example
@@ -29,29 +30,29 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
  * $exitCode = $thread->join();           // wait for completion
  * ```
  *
- * Custom configuration is done once at bootstrap via {@see Thread::bindEngine()}:
+ * Custom configuration is done once at bootstrap via {@see Thread::bindLauncher()}:
  *
  * ```
- * Thread::bindEngine(
- *     (new ManualEngine())
- *         ->withTransport(new TempFileTransport())
- *         ->withBinaryPath('/usr/bin/php')
- *         ->withSecurity('your-secret')
- * );
+ * Thread::bindLauncher(new CliLauncher(
+ *     binaryPath: '/usr/bin/php',
+ *     runnerPath: __DIR__ . '/vendor/flytachi/winter-thread/wRunner',
+ *     transport:  new TempFileTransport(),
+ *     secret:     'your-secret',
+ * ));
  * ```
  *
  * @package Flytachi\Winter\Thread
- * @version 2.0
+ * @version 3.0
  * @author Flytachi
  * @see \Flytachi\Winter\Thread\Runnable
- * @see \Flytachi\Winter\Thread\Engine\Engine
+ * @see \Flytachi\Winter\Thread\Launch\Launcher
  */
 final class Thread
 {
     private ?ProcessHandle $handle = null;
     private string $name;
 
-    private static ?Engine $engine = null;
+    private static ?Launcher $launcher = null;
 
     /**
      * @param Runnable    $runnable  The task to execute in the new process.
@@ -74,20 +75,21 @@ final class Thread
     }
 
     /**
-     * Binds the engine used by all threads. Replaces the default AdaptiveEngine.
-     * Call once at application bootstrap.
+     * Binds the launcher used by all threads. Replaces the default self-configuring
+     * CliLauncher. Call once at application bootstrap.
      */
-    public static function bindEngine(Engine $engine): void
+    public static function bindLauncher(Launcher $launcher): void
     {
-        self::$engine = $engine;
+        self::$launcher = $launcher;
     }
 
     /**
-     * Returns the active engine, lazily creating a default AdaptiveEngine if none was bound.
+     * Returns the active launcher, lazily creating a self-configuring CliLauncher if
+     * none was bound.
      */
-    public static function engine(): Engine
+    public static function launcher(): Launcher
     {
-        return self::$engine ??= new AdaptiveEngine();
+        return self::$launcher ??= CliLauncher::adaptive();
     }
 
     /**
@@ -113,9 +115,9 @@ final class Thread
             );
         }
 
-        $engine = self::engine();
+        $launcher = self::launcher();
         $spec = new LaunchSpec(
-            payload: $this->serialize($engine),
+            payload: $this->serialize($launcher),
             namespace: $this->namespace,
             name: $this->name,
             tag: $this->tag,
@@ -124,7 +126,7 @@ final class Thread
             output: $outputTarget,
             detached: $detached,
         );
-        $this->handle = $engine->launcher()->launch($spec);
+        $this->handle = $launcher->launch($spec);
         return $this->handle->getPid();
     }
 
@@ -269,10 +271,10 @@ final class Thread
         return $this->tag;
     }
 
-    private function serialize(Engine $engine): string
+    private function serialize(Launcher $launcher): string
     {
         // opis/closure is a hard dependency; a matching signed/unsigned format is
         // produced here and verified by the child (see AdaptiveRunner).
-        return \Opis\Closure\serialize($this->runnable, $engine->security());
+        return \Opis\Closure\serialize($this->runnable, $launcher->security());
     }
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Load;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Tests\Container\ChildProcessProbe;
 use Flytachi\Winter\Thread\Tests\Container\LeanWorker;
 use Flytachi\Winter\Thread\Tests\Fixtures\BatchSumTask;
@@ -28,7 +28,7 @@ class StressTest extends TestCase
 
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     /** @return array<string, array{int, int, bool}> */
@@ -52,7 +52,7 @@ class StressTest extends TestCase
     #[DataProvider('loadProvider')]
     public function testConcurrencyScaling(int $total, int $maxConcurrent, bool $lean): void
     {
-        Thread::bindEngine($lean ? $this->leanEngine() : new AdaptiveEngine());
+        Thread::bindLauncher($lean ? $this->leanLauncher() : CliLauncher::adaptive());
         $worker = $lean ? 'lean' : 'default';
         $fdBefore = $this->fdCount();
         $startedAt = microtime(true);

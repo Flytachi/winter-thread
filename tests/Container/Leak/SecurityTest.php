@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread\Tests\Container\Leak;
 
-use Flytachi\Winter\Thread\Engine\AdaptiveEngine;
-use Flytachi\Winter\Thread\Engine\ManualEngine;
+use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Runner\AdaptiveRunner;
 use Flytachi\Winter\Thread\Tests\Fixtures\MarkedSleepTask;
@@ -23,7 +22,7 @@ class SecurityTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Thread::bindEngine(new AdaptiveEngine());
+        Thread::bindLauncher(CliLauncher::adaptive());
     }
 
     public function testPayloadNotExposedInProcessCmdline(): void
@@ -54,18 +53,19 @@ class SecurityTest extends TestCase
             $this->markTestSkipped('ext-shmop not available.');
         }
 
-        $engine = (new ManualEngine())
-            ->withTransport(new ShmTransport())
-            ->withBinaryPath('php')
-            ->withRunnerPath('wRunner')
-            ->withSecurity('the-secret');
+        $launcher = new CliLauncher(
+            binaryPath: 'php',
+            runnerPath: 'wRunner',
+            transport: new ShmTransport(),
+            secret: 'the-secret',
+        );
 
         // Forge an UNSIGNED payload (serialized without the security provider).
         $shm = new ShmTransport();
         $staged = $shm->stage(\Opis\Closure\serialize(new MarkedSleepTask('x', 0)));
 
         $err = fopen('php://memory', 'w+');
-        $code = (new AdaptiveRunner($engine->security(), $err))->execute(['shmkey' => (string) $staged->ref]);
+        $code = (new AdaptiveRunner($launcher->security(), $err))->execute(['shmkey' => (string) $staged->ref]);
 
         $this->assertSame(1, $code, 'unsigned payload must be rejected under a configured secret');
         rewind($err);
