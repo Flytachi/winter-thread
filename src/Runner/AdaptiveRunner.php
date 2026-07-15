@@ -53,7 +53,7 @@ readonly class AdaptiveRunner implements Runner
         return new self($secret !== null ? new DefaultSecurityProvider(secret: $secret) : null);
     }
 
-    private function stderr(): mixed
+    final protected function stderr(): mixed
     {
         return $this->errStream ?? STDERR;
     }
@@ -138,7 +138,7 @@ readonly class AdaptiveRunner implements Runner
     }
 
     /** Read-and-delete the shared-memory segment the parent's ShmTransport allocated. */
-    private function receiveShm(int $key): string
+    final protected function receiveShm(int $key): string
     {
         if (!extension_loaded('shmop')) {
             throw new ThreadException('shmkey payload requires ext-shmop.');
@@ -152,7 +152,7 @@ readonly class AdaptiveRunner implements Runner
         return $payload;
     }
 
-    private function daemonize(): void
+    final protected function daemonize(): void
     {
         $pid = pcntl_fork();
         if ($pid === -1) {
@@ -188,7 +188,7 @@ readonly class AdaptiveRunner implements Runner
     }
 
     /** @return array<string, string|bool> */
-    private function parseArgs(): array
+    final protected function parseArgs(): array
     {
         $argv = $_SERVER['argv'] ?? [];
         $args = [];
