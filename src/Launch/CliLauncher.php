@@ -10,7 +10,6 @@ use Flytachi\Winter\Thread\Payload\PipeTransport;
 use Flytachi\Winter\Thread\Payload\StagedPayload;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use Flytachi\Winter\Thread\ThreadException;
-use Opis\Closure\Security\DefaultSecurityProvider;
 
 /**
  * The default parent-side backend: launches a local PHP CLI process with `proc_open`.
@@ -42,6 +41,9 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  */
 final readonly class CliLauncher implements Launcher
 {
+    use LauncherSupport;
+    use DetectsSwooleRuntime;
+
     /**
      * @param PayloadTransport|null $transport A fixed transport, or `null` to
      *        auto-detect one per launch (see {@see launch()}). Detection is
@@ -80,15 +82,10 @@ final readonly class CliLauncher implements Launcher
     ): self {
         return new self(
             binaryPath: $binaryPath ?? self::detectBinaryPath(),
-            runnerPath: $runnerPath ?? (dirname(__DIR__, 2) . '/wRunner'),
+            runnerPath: $runnerPath ?? self::defaultRunnerPath(),
             transport: $transport,
             secret: $secret ?? (getenv('WINTER_THREAD_SECRET') ?: null),
         );
-    }
-
-    public function security(): ?DefaultSecurityProvider
-    {
-        return $this->secret !== null ? new DefaultSecurityProvider(secret: $this->secret) : null;
     }
 
     public function launch(LaunchSpec $spec): ProcessHandle
@@ -157,79 +154,26 @@ final readonly class CliLauncher implements Launcher
      */
     private function childEnv(): ?array
     {
-        if ($this->secret !== null) {
-            return array_merge(getenv(), ['WINTER_THREAD_SECRET' => $this->secret]);
-        }
-        return getenv('WINTER_THREAD_SECRET') !== false
-            ? array_merge(getenv(), ['WINTER_THREAD_SECRET' => ''])
-            : null;
+        $value = $this->secretEnvValue();
+        return $value === null
+            ? null   // nothing to override — proc_open inherits the environment unchanged
+            : array_merge(getenv(), ['WINTER_THREAD_SECRET' => $value]);
     }
 
     private function buildCommand(LaunchSpec $spec, StagedPayload $staged): string
     {
-        $args = [
-            '--namespace=' . escapeshellarg($spec->namespace),
-            '--name=' . escapeshellarg($spec->name),
-        ];
-        if ($spec->tag !== null) {
-            $args[] = '--tag=' . escapeshellarg($spec->tag);
-        }
-        if ($spec->debug) {
-            $args[] = '--debug';
-        }
-        if ($spec->detached) {
-            $args[] = '--detach';
-        }
-        foreach ($staged->cliArgs as $cliArg) {
-            // Defense-in-depth: escape even though the only current cliArg is
-            // --shmkey=<int>. Never let a transport inject into the shell command.
-            $args[] = escapeshellarg($cliArg);
-        }
-        foreach ($spec->arguments as $key => $value) {
-            if (!is_scalar($value) && !is_null($value)) {
-                continue;
-            }
-            if ($value === true) {
-                $args[] = '--arg-' . escapeshellarg((string) $key);
-            } elseif ($value !== null && $value !== false) {
-                $args[] = '--arg-' . escapeshellarg((string) $key) . '=' . escapeshellarg((string) $value);
-            }
-        }
-
+        // Escape each raw argv element for the shell; the args themselves are the
+        // same list a direct exec would receive (see LauncherSupport::buildArgv()).
         return escapeshellarg($this->binaryPath) . ' '
             . escapeshellarg($this->runnerPath) . ' '
-            . implode(' ', $args);
+            . implode(' ', array_map('escapeshellarg', $this->buildArgv($spec, $staged)));
     }
 
     private static function detectTransport(): PayloadTransport
     {
-        if (extension_loaded('swoole') && self::swooleRuntimeActive()) {
+        if (self::swooleRuntimeActive()) {
             return new TempFileTransport();
         }
         return new PipeTransport();
-    }
-
-    /**
-     * true if we are inside a coroutine OR Swoole runtime hooks are enabled
-     * (both corrupt pipe fds under SWOOLE_HOOK_ALL).
-     */
-    private static function swooleRuntimeActive(): bool
-    {
-        if (class_exists('\Swoole\Coroutine') && \Swoole\Coroutine::getCid() !== -1) {
-            return true;
-        }
-        if (class_exists('\Swoole\Runtime') && method_exists('\Swoole\Runtime', 'getHookFlags')) {
-            return \Swoole\Runtime::getHookFlags() !== 0;
-        }
-        return false;
-    }
-
-    private static function detectBinaryPath(): string
-    {
-        if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server') {
-            return PHP_BINARY ?: 'php';
-        }
-        $candidate = PHP_BINDIR . '/php';
-        return is_executable($candidate) ? $candidate : 'php';
     }
 }

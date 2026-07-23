@@ -3,9 +3,11 @@
 Everything about *how a task process is started* lives behind a single
 parent-side abstraction: the [`Launcher`](../src/Launch/Launcher.php). It spawns
 the process and owns the parent↔child trust contract (the payload-signing
-secret). The default [`CliLauncher`](../src/Launch/CliLauncher.php) additionally
+secret). The default [`AdaptiveLauncher`](../src/Launch/AdaptiveLauncher.php)
+routes each launch to a concrete backend — [`CliLauncher`](../src/Launch/CliLauncher.php)
+or [`SwooleLauncher`](../src/Launch/SwooleLauncher.php) — each of which additionally
 carries the payload transport, the PHP binary path, and the `wRunner` path — but
-those are its own concern, not part of the `Launcher` interface.
+those are the backend's own concern, not part of the `Launcher` interface.
 
 You bind one **once at bootstrap**:
 
@@ -13,9 +15,9 @@ You bind one **once at bootstrap**:
 Thread::bindLauncher($launcher);
 ```
 
-If you bind nothing, a self-configuring `CliLauncher` is used — so the zero-config
-case just works. The binding is a process-wide static shared by every `Thread` in
-the process.
+If you bind nothing, a self-configuring `AdaptiveLauncher` is used — so the
+zero-config case just works everywhere, CLI, FPM, and inside a Swoole coroutine.
+The binding is a process-wide static shared by every `Thread` in the process.
 
 ## The `Launcher` contract
 
@@ -61,10 +63,24 @@ Two consequences follow directly, and they explain the whole model:
 > — forwarding `WINTER_THREAD_SECRET` into the remote environment. The default
 > `CliLauncher` does all of this locally.
 
-## `CliLauncher` — the default
+## `AdaptiveLauncher` — the default
 
-The default backend spawns a local PHP CLI process with `proc_open`. Build it two
-ways.
+The default launcher is `AdaptiveLauncher`. It holds both backends and picks one
+**per `launch()`**, from the runtime it finds at that moment:
+
+- inside a Swoole coroutine, or with runtime hooks enabled → **`SwooleLauncher`**,
+  which is safe against the reactor;
+- everywhere else — plain CLI, FPM → **`CliLauncher`**, which uses `proc_open`.
+
+`Thread::launcher()` builds `AdaptiveLauncher::adaptive()` when nothing is bound, so
+the same code launches background tasks correctly from a CLI command and from
+inside an HTTP-worker coroutine with no configuration. With no Swoole runtime
+active it routes to `CliLauncher` and behaves exactly like previous versions. The
+two backends it routes between are described next.
+
+## `CliLauncher` — the CLI / FPM backend
+
+Spawns a local PHP CLI process with `proc_open`. Build it two ways.
 
 ### Self-configuring: `CliLauncher::adaptive()`
 
@@ -92,11 +108,12 @@ What it resolves, exactly:
 - **Transport** — **not** resolved at construction. When left `null`, the
   transport is auto-detected on **every `launch()`** (see below).
 
-Because it's the default, most applications never touch the launcher at all:
+Because the default `AdaptiveLauncher` routes here for CLI/FPM, most applications
+never touch the launcher at all:
 
 ```php
 $thread = new Thread(new MyTask());
-$thread->start(); // self-configuring CliLauncher
+$thread->start(); // AdaptiveLauncher → self-configuring CliLauncher on CLI/FPM
 ```
 
 ### Transport is detected per launch, not at bind time
@@ -111,10 +128,11 @@ Deferring this to launch time is deliberate: a launcher bound during **preload**
 Resolving per launch means the transport reflects the environment as it is when a
 task is actually started.
 
-> **Swoole note.** The transport detection above is real, but running
-> winter-thread from *inside a live Swoole coroutine worker* has known limitations
-> that no transport choice fully resolves. Swoole support of that kind is under
-> active development — see [8. Payload Transports](08-payload-transports.md).
+> **Swoole note.** `CliLauncher` uses `proc_open`, which corrupts the reactor's
+> file descriptors when called from *inside a live Swoole coroutine* — the second
+> spawn fails with `Bad file descriptor`. You do not normally hit this: the default
+> `AdaptiveLauncher` routes to `SwooleLauncher` there. Bind a bare `CliLauncher`
+> only for CLI/FPM, or when you know no coroutine is active.
 
 ### Explicit construction
 
@@ -132,6 +150,38 @@ Thread::bindLauncher(new CliLauncher(
 
 `CliLauncher` is a `final readonly class` — immutable once constructed. To change
 one aspect, construct a new one.
+
+## `SwooleLauncher` — the coroutine backend
+
+The backend `AdaptiveLauncher` routes to when a Swoole runtime is active. You
+rarely build it directly; it exists so that launching from *inside a coroutine*
+works at all.
+
+Instead of `proc_open` (which corrupts the reactor's fds) or `Swoole\Process`
+(which Swoole forbids while its async-io threads are up), it starts the runner as
+a **shell background job** through `Swoole\Coroutine\System::exec()` — non-blocking
+inside a coroutine, and never touching the reactor's descriptors. The runner then
+daemonizes itself (`--detach`) and re-parents to init, so the launch returns
+immediately.
+
+The payload is delivered pipe-free — the fd type a pipe would use is exactly what
+conflicts with the reactor:
+
+- with `ext-shmop`: through shared memory, passed by `--shmkey` (RAM, no file);
+- otherwise: through a temp file read as the child's stdin.
+
+```php
+SwooleLauncher::adaptive(
+    secret:     null,   // else WINTER_THREAD_SECRET env, else no signing
+    binaryPath: null,   // else the resolved real PHP CLI binary
+    runnerPath: null,   // else the packaged wRunner
+);
+```
+
+Requires `ext-swoole` at launch time (it throws otherwise) and is meaningful only
+for **detached** tasks — a coroutine worker has no parent pipe to stream a child's
+output back through, so its `ProcessHandle` ({@see SwooleProcessHandle}) is
+PID-based: liveness and signalling work, but there is nothing to `join()` or read.
 
 ## A custom backend
 
@@ -166,12 +216,12 @@ Framework code that builds its own pool can reach the launcher and handle withou
 the `Thread` facade:
 
 ```php
-$launcher = Thread::launcher();        // the bound launcher (lazily a CliLauncher)
+$launcher = Thread::launcher();        // the bound launcher (lazily an AdaptiveLauncher)
 $handle   = $launcher->launch($spec);  // a ProcessHandle for a LaunchSpec
 ```
 
 `Thread::launcher()` returns the currently bound launcher, lazily creating a
-self-configuring `CliLauncher` the first time if none was bound.
+self-configuring `AdaptiveLauncher` the first time if none was bound.
 
 ## Resetting the launcher
 
@@ -179,7 +229,7 @@ self-configuring `CliLauncher` the first time if none was bound.
 one:
 
 ```php
-Thread::bindLauncher(CliLauncher::adaptive());
+Thread::bindLauncher(AdaptiveLauncher::adaptive());
 ```
 
 There is no separate "unbind" — rebinding replaces the previous launcher for all

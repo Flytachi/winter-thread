@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-07-23
+
+Stable background launching from **inside a Swoole coroutine**. Native `proc_open`
+corrupts the reactor's file-descriptor table from within a coroutine — the first
+spawn may work, the next fails with `Bad file descriptor` — and `Swoole\Process`
+cannot be created while async-io threads are up. This release adds a Swoole-native
+backend and makes the default launcher route to it automatically, so background
+tasks behave the same on plain CLI/FPM and from inside a live coroutine worker.
+Fully backward-compatible: with no Swoole runtime active, everything runs through
+`proc_open` exactly as before.
+
+### Added
+- **`SwooleLauncher`** — launches the runner as a shell background job via
+  `Swoole\Coroutine\System::exec()`: non-blocking inside a coroutine and never
+  touching the reactor's fds. The payload is delivered pipe-free — shared memory
+  (`ext-shmop`) when available, otherwise a temp file read as the child's stdin.
+  Requires `ext-swoole` at launch time.
+- **`AdaptiveLauncher`** — routes each `launch()` by runtime: `SwooleLauncher`
+  inside a coroutine or with runtime hooks enabled, `CliLauncher` (proc_open)
+  everywhere else. `security()` delegates to the chosen backend.
+- **`SwooleProcessHandle`** — a PID-based `ProcessHandle` for the detached,
+  init-reparented processes the Swoole backend produces.
+- **`LauncherSupport`** and **`DetectsSwooleRuntime`** traits — the runner argument
+  list, payload signing, secret environment value, binary/runner-path resolution,
+  and Swoole-runtime detection shared across the launchers.
+- `swoole/ide-helper` (dev) and an `ext-swoole` suggestion.
+
+### Changed
+- **The default launcher is now `AdaptiveLauncher`** (was `CliLauncher`).
+  `Thread::launcher()` builds `AdaptiveLauncher::adaptive()` when nothing is bound,
+  so in-coroutine dispatch is safe out of the box. With no active Swoole runtime it
+  routes to `CliLauncher` and behaves exactly as before — a drop-in change.
+
+### Fixed
+- Launching from inside a live Swoole coroutine no longer fails with
+  `proc_open(): posix_spawn() failed: Bad file descriptor` (and the matching
+  `socket_free_defer close(...) failed`). Previously a documented limitation of
+  in-coroutine dispatch; now handled by the adaptive default.
+
 ## [3.0.0] - 2026-07-15
 
 A configuration-model overhaul. The `Engine` layer is gone: `Thread` now binds a

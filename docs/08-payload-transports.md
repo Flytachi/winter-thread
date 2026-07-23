@@ -81,14 +81,16 @@ the runtime intercepts stream functions, and pipe file descriptors from
 `extension_loaded('swoole')`, so a non-Swoole app is never affected, and it keys
 on an **active** runtime — a dormant extension does not force TempFile.
 
-> **Status: Swoole support is under active development.** Choosing a pipe-free
-> transport is necessary but **not sufficient** for running winter-thread from
-> *inside a live Swoole coroutine worker*: native `proc_open` contends with the
-> Swoole reactor over the process file-descriptor table, and spawning a subprocess
-> from a hooked coroutine has limitations that no transport choice resolves on its
-> own. Treat in-coroutine dispatch as experimental for now. A robust, documented
-> pattern (spawning from outside the reactor) is being worked on — this section
-> will be updated when it lands. Plain CLI and FPM are unaffected.
+> **Status: in-coroutine dispatch is supported.** Choosing a pipe-free transport
+> is necessary but **not sufficient** on its own — native `proc_open` still
+> contends with the reactor over the process file-descriptor table from inside a
+> coroutine. That last gap is closed by the launcher, not the transport: the
+> default [`AdaptiveLauncher`](07-the-launcher.md) routes to `SwooleLauncher`,
+> which starts the runner as a shell background job (`Coroutine\System::exec()`)
+> that never touches the reactor's fds. So the pipe-free transport described here
+> handles the *payload*, and `SwooleLauncher` handles the *spawn* — together they
+> make launching from a live coroutine worker safe. Plain CLI and FPM are
+> unaffected.
 
 ## How a transport works (internally)
 

@@ -17,7 +17,9 @@ supervisor directly on the raw primitives.
 | [`Runnable`](#runnable-interface) | interface | define a task — put your logic in `run()` |
 | [`Thread`](#thread-final-class) | class | start & control one task as a background process |
 | [`Launcher`](#launcher-interface) | interface | the parent-side backend, bound once at bootstrap |
-| [`CliLauncher`](#clilauncher-final-readonly-class) | class | the default launcher — `adaptive()` or explicit |
+| `AdaptiveLauncher` | class | **the default** — routes each launch to the CLI or Swoole backend by runtime |
+| [`CliLauncher`](#clilauncher-final-readonly-class) | class | the CLI/FPM backend (`proc_open`) — `adaptive()` or explicit |
+| `SwooleLauncher` | class | the coroutine backend — a Swoole-safe shell background job |
 
 ### Low-level & extension API — what you build on
 
@@ -96,7 +98,7 @@ exists).
 | Method | Returns | Description |
 |---|---|---|
 | `Thread::bindLauncher(Launcher $launcher)` | `void` | set the process-wide launcher (call once at bootstrap) |
-| `Thread::launcher()` | `Launcher` | the current launcher; lazily creates a default `CliLauncher::adaptive()` if none bound |
+| `Thread::launcher()` | `Launcher` | the current launcher; lazily creates a default `AdaptiveLauncher::adaptive()` if none bound |
 
 #### `start`
 
@@ -232,10 +234,11 @@ preload picks the right transport once a worker/coroutine exists).
 
 `Flytachi\Winter\Thread\Launch\ProcessHandle` — the parent-side control contract a
 launcher returns. Programming against it (not a concrete class) is what lets the
-process backend be swapped. The default `CliLauncher` returns a **`CliProcessHandle`**
-(`final class`, `proc_open`-backed, mutable — tracks process/pipes/exit-code);
-custom launchers return their own implementation. Not constructed directly —
-obtained from `Launcher::launch()`.
+process backend be swapped. The `CliLauncher` backend returns a **`CliProcessHandle`**
+(`final class`, `proc_open`-backed, mutable — tracks process/pipes/exit-code); the
+`SwooleLauncher` backend returns a PID-based **`SwooleProcessHandle`**; custom
+launchers return their own implementation. Not constructed directly — obtained
+from `Launcher::launch()`.
 
 | Method | Returns | Description |
 |---|---|---|

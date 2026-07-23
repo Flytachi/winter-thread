@@ -88,10 +88,12 @@ Notes:
 - These methods return `''` if you started with a file or `/dev/null` target (there
   is no pipe to read), and `''` once the handle is detached.
 
-> **Under Swoole**, output behaviour depends on the (experimental) in-coroutine
-> dispatch path — both file and pipe output have trade-offs there, and none is a
-> settled recommendation yet. Swoole support is under active development; see
-> [8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility).
+> **Under Swoole**, a task launched from inside a coroutine goes through
+> `SwooleLauncher`, which spawns detached with no parent pipe — so `readOutput()` /
+> `readError()` return `''` and its `ProcessHandle` is PID-based. Send such a
+> worker's output to a **file** (or `/dev/null`) and read the file; the pipe-back
+> methods apply only to the CLI/FPM backend. See
+> [7. The Launcher](07-the-launcher.md#swoolelauncher--the-coroutine-backend).
 
 ## Debug mode
 

@@ -20,7 +20,7 @@ forget. How the process is launched lives behind a single pluggable `Launcher`.
 4. [Basic Usage](04-basic-usage.md) — `Runnable`, `Thread`, `start()`/`join()`, arguments, exit codes
 5. [Output & Debugging](05-output-and-debugging.md) — output targets, the Broken-pipe trap, debug mode
 6. [Process Control & Lifecycle](06-process-control.md) — signals, graceful shutdown, `reap()`, `detach()`
-7. [The Launcher](07-the-launcher.md) — `CliLauncher`, `adaptive()`, parent-vs-child, custom backends
+7. [The Launcher](07-the-launcher.md) — `AdaptiveLauncher` (default), `CliLauncher` / `SwooleLauncher` backends, custom backends
 8. [Payload Transports](08-payload-transports.md) — pipe / temp-file / shm, transport selection
 9. [Detached Mode](09-detached-mode.md) — zombie-free fire-and-forget, container init
 10. [Security](10-security.md) — signed payloads, the trust model, object-injection defense

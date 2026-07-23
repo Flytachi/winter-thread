@@ -31,10 +31,12 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^13.1",
-        "squizlabs/php_codesniffer": "^4.0"
+        "squizlabs/php_codesniffer": "^4.0",
+        "swoole/ide-helper": "^6.0"
     },
     "suggest": {
-        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)"
+        "ext-shmop": "Required for ShmTransport (Swoole-compatible shared-memory payload delivery)",
+        "ext-swoole": "Enables SwooleLauncher — safe background launching from inside a Swoole coroutine/reactor (via Coroutine\\System::exec), where proc_open corrupts the event loop's file descriptors"
     },
     "homepage": "https://winterframe.net",
     "support": {

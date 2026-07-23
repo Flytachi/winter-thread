@@ -34,7 +34,7 @@ corrupt and no inherited connections to break.
 - **Full Process Control**: `start()`, `join()`, `pause()`, `resume()`, `terminate()`, and `kill()`.
 - **Advanced Process Naming**: Identify your processes easily with namespaces, names, and tags.
 - **Safe by Default**: Output goes to `/dev/null` by default — no Broken pipe risk for fire-and-forget jobs.
-- **Swoole / Event-Loop Compatible**: Pluggable payload transports (pipe, temp-file, shared-memory); the default engine auto-detects an active Swoole runtime and avoids fd corruption under `SWOOLE_HOOK_ALL`.
+- **Swoole / Event-Loop Compatible**: Launch background tasks from inside a coroutine safely — the default `AdaptiveLauncher` routes to a Swoole-native backend (`Coroutine\System::exec`) where `proc_open` would corrupt the reactor's fds, with pipe-free payload transports (temp-file, shared-memory). No `ext-swoole` required; it's used only when present.
 - **Zombie-free fire-and-forget**: Optional detached mode (`fork` + `setsid`) reparents workers to init, so long-lived parents (FPM, daemons) never accumulate zombies.
 - **Pluggable backend**: Swap the payload transport or the whole spawn strategy through a single `Launcher` — build custom backends (Docker, SSH, …) without touching `Thread`.
 - **Java-like API**: Familiar method names like `isAlive()` and `join()` for an easy learning curve.
@@ -101,14 +101,16 @@ echo "Task finished with exit code: $exitCode\n";
 ## Configuration — the Launcher
 
 Configuration goes through a single `Launcher`, bound **once at bootstrap** with
-`Thread::bindLauncher()`. When you bind nothing, a self-configuring **`CliLauncher`**
-is used (`CliLauncher::adaptive()`), adapting to the current environment (CLI / FPM).
+`Thread::bindLauncher()`. When you bind nothing, a self-configuring **`AdaptiveLauncher`**
+is used (`AdaptiveLauncher::adaptive()`), which routes each launch to the right
+backend for the current runtime — `CliLauncher` on CLI / FPM, `SwooleLauncher`
+inside a Swoole coroutine.
 
 ```php
 use Flytachi\Winter\Thread\Launch\CliLauncher;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 
-// Zero-config: a self-configuring CliLauncher is the default — nothing to do.
+// Zero-config: a self-configuring AdaptiveLauncher is the default — nothing to do.
 $thread = new Thread(new MyTask());
 $thread->start();
 
@@ -126,15 +128,18 @@ Thread::bindLauncher(new MyCustomLauncher());
 
 ### Swoole / Event-Loop Compatibility
 
-When its transport is left unset, `CliLauncher::adaptive()` picks a **pipe-free**
-transport (`TempFileTransport`) if it detects an active Swoole runtime — pipe file
+When its transport is left unset, the launcher picks a **pipe-free** transport
+(`TempFileTransport`) if it detects an active Swoole runtime — pipe file
 descriptors from `proc_open` do not survive `SWOOLE_HOOK_ALL` intact.
 
-> **Swoole support is under active development.** A safe transport is necessary but
-> not sufficient for running from *inside a live Swoole coroutine worker*: native
-> `proc_open` contends with the Swoole reactor over the process file-descriptor
-> table. Treat in-coroutine dispatch as experimental for now. Plain CLI and FPM are
-> unaffected. See [docs/08](docs/08-payload-transports.md#swoole--event-loop-compatibility).
+> **Launching from inside a Swoole coroutine is supported.** A pipe-free transport
+> handles the *payload*, but the *spawn* is the other half: native `proc_open`
+> contends with the reactor over the file-descriptor table from inside a coroutine.
+> The default `AdaptiveLauncher` closes that gap — it routes to `SwooleLauncher`,
+> which starts the runner as a shell background job (`Coroutine\System::exec()`)
+> that never touches the reactor's fds. So in-coroutine dispatch works out of the
+> box; plain CLI and FPM go through `proc_open` exactly as before. See
+> [docs/07](docs/07-the-launcher.md#swoolelauncher--the-coroutine-backend).
 
 | Transport | Delivery | Parent pipe fd | Requires |
 |---|---|---|---|

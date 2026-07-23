@@ -15,7 +15,7 @@ to your `outputTarget` (a file, or the parent pipes when `null`; nowhere if
 | `failed to deserialize payload` | secret mismatch / tampered payload | [Payload rejected](#payload-rejected) |
 | Zombies pile up under a daemon/FPM | long-lived parent never reaps | [Zombies](#zombie-processes-accumulate) |
 | Job stalls or vanishes silently | `null` output pipe never drained | [Broken pipe](#task-stalls-or-dies-silently-broken-pipe) |
-| `Bad file descriptor` under Swoole | in-coroutine spawn vs the reactor (known limitation) | [Swoole](#bad-file-descriptor-under-swoole) |
+| `Bad file descriptor` under Swoole | a bare `CliLauncher` (proc_open) bound inside a coroutine | [Swoole](#bad-file-descriptor-under-swoole) |
 | `$args` missing a value you passed | `false`/`null`/non-scalar dropped | [Arguments](#an-argument-is-missing-in-args) |
 | `ShmTransport requires ext-shmop` | extension not loaded | [shmop](#shmtransport-requires-ext-shmop) |
 | `CliLauncher` missing binary/runner path | required arg unset in explicit construction | [CliLauncher](#clilauncher--missing-binary-or-runner-path) |
@@ -69,7 +69,7 @@ task code executed.
 
 - **Secret mismatch.** If you sign payloads, the child verifies with the secret it
   received via `WINTER_THREAD_SECRET`. A different (or missing) secret on the child
-  rejects everything. With the default `CliLauncher` the secret is propagated for
+  rejects everything. With the built-in launchers the secret is propagated for
   you; with a **custom launcher** you must forward that env var yourself. See
   [10. Security](10-security.md#how-the-secret-reaches-the-worker).
 - **Non-serializable task.** A property holding a resource (PDO, socket, stream)
@@ -110,16 +110,19 @@ You started with `outputTarget: null` and the job hangs or disappears with no er
 
 ## `Bad file descriptor` under Swoole
 
-Spawning from **inside a live Swoole coroutine worker** can fail with
-`proc_open(): posix_spawn() failed: Bad file descriptor` (and matching
-`socket_free_defer close(...) failed` from Swoole). Native `proc_open` and the
-Swoole reactor contend over the process file-descriptor table, and no transport or
-output setting fully resolves it.
+`proc_open(): posix_spawn() failed: Bad file descriptor` (with a matching
+`socket_free_defer close(...) failed` from Swoole) means a launch went through
+`proc_open` from *inside a live coroutine*, where native `proc_open` and the
+reactor contend over the process file-descriptor table.
 
-This is a **known limitation** — Swoole support of in-coroutine dispatch is under
-active development. Plain CLI and FPM are unaffected. See
-[8. Payload Transports](08-payload-transports.md#swoole--event-loop-compatibility)
-for the current status.
+**You should not hit this with the defaults.** `Thread::launcher()` binds
+`AdaptiveLauncher`, which routes to `SwooleLauncher` (a coroutine-safe shell
+background job) whenever a coroutine or runtime hooks are active. You only see this
+error if you **bound a bare `CliLauncher`** and then launched from inside a
+coroutine — either restore the adaptive default (`Thread::bindLauncher(...)` with
+`AdaptiveLauncher::adaptive()`, or simply don't bind one) or bind `CliLauncher`
+only where no coroutine runs. Plain CLI and FPM are unaffected either way. See
+[7. The Launcher](07-the-launcher.md#swoolelauncher--the-coroutine-backend).
 
 ## An argument is missing in `$args`
 

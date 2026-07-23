@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flytachi\Winter\Thread;
 
-use Flytachi\Winter\Thread\Launch\CliLauncher;
+use Flytachi\Winter\Thread\Launch\AdaptiveLauncher;
 use Flytachi\Winter\Thread\Launch\Launcher;
 use Flytachi\Winter\Thread\Launch\ProcessHandle;
 
@@ -84,12 +84,15 @@ final class Thread
     }
 
     /**
-     * Returns the active launcher, lazily creating a self-configuring CliLauncher if
-     * none was bound.
+     * Returns the active launcher, lazily creating a self-configuring
+     * {@see AdaptiveLauncher} if none was bound. The adaptive default routes each
+     * launch by runtime — `proc_open` on plain CLI/FPM, a Swoole-safe shell
+     * background job from inside a coroutine — so background tasks work in both
+     * without any configuration.
      */
     public static function launcher(): Launcher
     {
-        return self::$launcher ??= CliLauncher::adaptive();
+        return self::$launcher ??= AdaptiveLauncher::adaptive();
     }
 
     /**

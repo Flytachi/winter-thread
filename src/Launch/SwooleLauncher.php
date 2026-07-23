@@ -10,7 +10,6 @@ use Flytachi\Winter\Thread\Payload\ShmTransport;
 use Flytachi\Winter\Thread\Payload\StagedPayload;
 use Flytachi\Winter\Thread\Payload\TempFileTransport;
 use Flytachi\Winter\Thread\ThreadException;
-use Opis\Closure\Security\DefaultSecurityProvider;
 
 /**
  * A launcher safe to call from inside a running Swoole reactor.
@@ -35,6 +34,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  */
 final readonly class SwooleLauncher implements Launcher
 {
+    use LauncherSupport;
+
     public function __construct(
         private string $binaryPath,
         private string $runnerPath,
@@ -48,15 +49,10 @@ final readonly class SwooleLauncher implements Launcher
         ?string $runnerPath = null,
     ): self {
         return new self(
-            binaryPath: $binaryPath ?? (PHP_BINARY ?: 'php'),
-            runnerPath: $runnerPath ?? (dirname(__DIR__, 2) . '/wRunner'),
+            binaryPath: $binaryPath ?? self::detectBinaryPath(),
+            runnerPath: $runnerPath ?? self::defaultRunnerPath(),
             secret: $secret ?? (getenv('WINTER_THREAD_SECRET') ?: null),
         );
-    }
-
-    public function security(): ?DefaultSecurityProvider
-    {
-        return $this->secret !== null ? new DefaultSecurityProvider(secret: $this->secret) : null;
     }
 
     public function launch(LaunchSpec $spec): ProcessHandle
@@ -75,7 +71,10 @@ final readonly class SwooleLauncher implements Launcher
 
         // Keep the signing secret in the environment (inherited by the child), never
         // in argv. The value is the framework's single constant, so this is safe.
-        $this->exportSecretEnv();
+        $secretValue = $this->secretEnvValue();
+        if ($secretValue !== null) {
+            putenv('WINTER_THREAD_SECRET=' . $secretValue);
+        }
 
         // php <runner> <args> < <stdin> >> <output> 2>&1 & echo $!
         //  - `&` backgrounds it (the runner then daemonizes itself via --detach);
@@ -123,56 +122,5 @@ final readonly class SwooleLauncher implements Launcher
     {
         // stdinSpec is ['file', <path>, 'r']; shm uses /dev/null, temp-file uses its path.
         return $staged->stdinSpec[1] ?? '/dev/null';
-    }
-
-    /**
-     * Puts the signing secret in the environment so the shell-launched child
-     * inherits it (out of argv). With no secret, blank an ambient one so an
-     * unsigned payload is not rejected by the child.
-     */
-    private function exportSecretEnv(): void
-    {
-        if ($this->secret !== null) {
-            putenv('WINTER_THREAD_SECRET=' . $this->secret);
-        } elseif (getenv('WINTER_THREAD_SECRET') !== false) {
-            putenv('WINTER_THREAD_SECRET=');
-        }
-    }
-
-    /**
-     * Raw argv for the runner (execv semantics — no shell, so no escaping).
-     *
-     * @return list<string>
-     */
-    private function buildArgv(LaunchSpec $spec, StagedPayload $staged): array
-    {
-        $args = [
-            '--namespace=' . $spec->namespace,
-            '--name=' . $spec->name,
-        ];
-        if ($spec->tag !== null) {
-            $args[] = '--tag=' . $spec->tag;
-        }
-        if ($spec->debug) {
-            $args[] = '--debug';
-        }
-        if ($spec->detached) {
-            $args[] = '--detach';
-        }
-        foreach ($staged->cliArgs as $cliArg) {
-            $args[] = $cliArg;   // e.g. --shmkey=123
-        }
-        foreach ($spec->arguments as $key => $value) {
-            if (!is_scalar($value) && $value !== null) {
-                continue;
-            }
-            if ($value === true) {
-                $args[] = '--arg-' . $key;
-            } elseif ($value !== null && $value !== false) {
-                $args[] = '--arg-' . $key . '=' . $value;
-            }
-        }
-
-        return $args;
     }
 }

@@ -22,6 +22,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  */
 final readonly class AdaptiveLauncher implements Launcher
 {
+    use DetectsSwooleRuntime;
+
     public function __construct(
         private CliLauncher $cli,
         private SwooleLauncher $swoole,
@@ -52,23 +54,5 @@ final readonly class AdaptiveLauncher implements Launcher
     private function backend(): Launcher
     {
         return self::swooleRuntimeActive() ? $this->swoole : $this->cli;
-    }
-
-    /**
-     * True inside a coroutine, or when Swoole runtime hooks are enabled — both make
-     * `proc_open` unsafe against the running reactor.
-     */
-    private static function swooleRuntimeActive(): bool
-    {
-        if (!extension_loaded('swoole')) {
-            return false;
-        }
-        if (class_exists('\Swoole\Coroutine') && \Swoole\Coroutine::getCid() !== -1) {
-            return true;
-        }
-        if (class_exists('\Swoole\Runtime') && method_exists('\Swoole\Runtime', 'getHookFlags')) {
-            return \Swoole\Runtime::getHookFlags() !== 0;
-        }
-        return false;
     }
 }

@@ -21,6 +21,7 @@ but it must remain executable and reachable on disk (see
 | **`ext-posix`** | `posix_kill()` (signals) and `posix_setsid()` (detached mode) | ✅ (Composer) |
 | **`opis/closure` ^4.5** | safe serialization of closures / anonymous classes and signed payloads | ✅ (Composer) |
 | **`ext-shmop`** | only for the [shared-memory transport](08-payload-transports.md) | ⚪ optional |
+| **`ext-swoole`** | only for the [Swoole launcher](07-the-launcher.md#swoolelauncher--the-coroutine-backend) — used automatically when launching from inside a coroutine | ⚪ optional |
 
 `ext-pcntl` and `ext-posix` are standard, lightweight POSIX extensions bundled
 with almost every Linux/macOS PHP CLI — nothing exotic. There is **no** ZTS build
