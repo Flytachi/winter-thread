@@ -218,27 +218,57 @@ suite via the bundled `tests/docker/Dockerfile`, on a PHP 8.4 / 8.5 matrix.
 
 ## Documentation
 
-Full documentation lives in [`/docs`](docs/README.md):
+The user-facing documentation lives at **[winterframe.net/packages/thread](https://winterframe.net/packages/thread)**
+(the link picks your language; RU and EN are both complete).
 
-1. [Introduction](docs/01-introduction.md) — philosophy, the no-heavy-ext story, when to use it
-2. [Installation & Requirements](docs/02-installation-and-requirements.md)
-3. [Quickstart](docs/03-quickstart.md) — a complete parallel example in 5 minutes
-4. [Basic Usage](docs/04-basic-usage.md)
-5. [Output & Debugging](docs/05-output-and-debugging.md)
-6. [Process Control & Lifecycle](docs/06-process-control.md) — signals, graceful shutdown
-7. [The Launcher](docs/07-the-launcher.md)
-8. [Payload Transports](docs/08-payload-transports.md)
-9. [Detached Mode](docs/09-detached-mode.md)
-10. [Security](docs/10-security.md)
-11. [Architecture & Internals](docs/11-architecture.md)
-12. [Patterns](docs/12-patterns.md) — pools, returning results, retries
-13. [Troubleshooting](docs/13-troubleshooting.md)
-14. [API Reference](docs/14-api-reference.md)
-15. [Testing](docs/15-testing.md)
+**Start here**
+
+| Page | What it answers |
+|------|-----------------|
+| [Introduction](https://winterframe.net/packages/thread/intro) | What it is, and why a process rather than a thread |
+| [Installation](https://winterframe.net/packages/thread/installation) | Requirements, bootstrap, verifying the install |
+| [Quick start](https://winterframe.net/packages/thread/quickstart) | A complete parallel example |
+| [Mental model](https://winterframe.net/packages/thread/mental-model) | Parent and child, and what crosses between them |
+
+**Guides**
+
+| Page | What it answers |
+|------|-----------------|
+| [Queue worker](https://winterframe.net/packages/thread/queue-worker) | A long-running consumer that survives restarts |
+| [Parallel tasks](https://winterframe.net/packages/thread/parallel-tasks) | Fanning work out and collecting results |
+| [Graceful shutdown](https://winterframe.net/packages/thread/graceful-shutdown) | Stopping work without losing it |
+| [Debugging output](https://winterframe.net/packages/thread/debugging-output) | Seeing what a child actually printed |
+| [Framework integration](https://winterframe.net/packages/thread/framework-integration) | Binding a launcher once, app-wide |
+
+**Reference**
+
+| Page | What it answers |
+|------|-----------------|
+| [API reference](https://winterframe.net/packages/thread/api-reference) | Every type, method and argument |
+| [Signals and exit codes](https://winterframe.net/packages/thread/signals-and-exit-codes) | What each signal and exit code means |
+| [Payload modes](https://winterframe.net/packages/thread/payload-modes) | Pipe, temp file and shared memory |
+
+**Deep dive**
+
+| Page | What it answers |
+|------|-----------------|
+| [Runner lifecycle](https://winterframe.net/packages/thread/runner-lifecycle) | What happens between `start()` and `run()` |
+| [Output and broken pipe](https://winterframe.net/packages/thread/output-and-broken-pipe) | Why fire-and-forget defaults to `/dev/null` |
+| [Swoole and payload delivery](https://winterframe.net/packages/thread/swoole-and-payload-delivery) | Launching from inside a coroutine |
+| [PID reuse and signals](https://winterframe.net/packages/thread/pid-reuse-and-signals) | Why signalling a raw PID is risky |
+| [Security and performance](https://winterframe.net/packages/thread/security-and-performance) | Payload signing, and what it costs |
+
+Classes in this package carry an `@link` to their page, so the same documentation is one click
+away from your IDE.
 
 ## Contributing
 
-Contributions are welcome! Please submit a pull request or open an issue for bugs, questions, or feature requests.
+Internal technical notes — exact contracts, invariants, and the reasoning behind decisions that
+are not obvious from the code — live in [`docs/`](docs/README.md): fifteen pages from
+[the launcher](docs/07-the-launcher.md) to [architecture](docs/11-architecture.md). Read those
+before changing how a process is spawned.
+
+Contributions are welcome — open an issue or a pull request for bugs, questions or features.
 
 
 ## License

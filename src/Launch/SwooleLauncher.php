@@ -31,6 +31,8 @@ use Flytachi\Winter\Thread\ThreadException;
  *
  * @see AdaptiveLauncher
  * @see SwooleProcessHandle
+ *
+ * @link https://winterframe.net/packages/thread/swoole-and-payload-delivery Why coroutines need this
  */
 final readonly class SwooleLauncher implements Launcher
 {

@@ -17,6 +17,8 @@ namespace Flytachi\Winter\Thread\Launch;
  *
  * @see Launcher
  * @see CliProcessHandle
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#processhandle-interface reap / join / detach
  */
 interface ProcessHandle
 {

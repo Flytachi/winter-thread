@@ -28,6 +28,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  *
  * @see CliLauncher
  * @see ProcessHandle
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#launcher-interface The two-method contract
  */
 interface Launcher
 {

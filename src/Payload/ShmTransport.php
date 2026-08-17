@@ -12,6 +12,8 @@ use Flytachi\Winter\Thread\ThreadException;
  * the child ({@see \Flytachi\Winter\Thread\Runner\AdaptiveRunner}) reads and deletes
  * it. Uses no pipe or temp file — safe under Swoole `SWOOLE_HOOK_ALL`, at the cost
  * of requiring `ext-shmop`.
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#shmtransport Delivery through shared memory
  */
 final class ShmTransport implements PayloadTransport
 {

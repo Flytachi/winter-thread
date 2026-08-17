@@ -38,6 +38,8 @@ use Flytachi\Winter\Thread\ThreadException;
  * ```
  *
  * @see Launcher
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#clilauncher-final-readonly-class Resolved defaults
  */
 final readonly class CliLauncher implements Launcher
 {

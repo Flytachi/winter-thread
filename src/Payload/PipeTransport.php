@@ -12,6 +12,8 @@ namespace Flytachi\Winter\Thread\Payload;
  * Under Swoole with `SWOOLE_HOOK_ALL` pipe descriptors are corrupted; prefer
  * {@see TempFileTransport} or {@see ShmTransport} there ({@see CliLauncher::adaptive()}
  * switches automatically).
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#pipetransport Delivery through the child stdin pipe
  */
 final class PipeTransport implements PayloadTransport
 {

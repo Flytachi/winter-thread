@@ -25,6 +25,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * reads `WINTER_THREAD_SECRET`). `null` means the payload is unsigned.
  *
  * @see Runner
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#adaptiverunner-final-readonly-class Verify, then run
  */
 readonly class AdaptiveRunner implements Runner
 {

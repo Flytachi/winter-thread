@@ -11,6 +11,8 @@ namespace Flytachi\Winter\Thread\Launch;
  * {@see AdaptiveLauncher} (which then routes to {@see SwooleLauncher}). True when
  * we are inside a coroutine or when runtime hooks are enabled — both make
  * `proc_open` corrupt the reactor's file descriptors.
+ *
+ * @link https://winterframe.net/packages/thread/swoole-and-payload-delivery What counts as an active Swoole runtime
  */
 trait DetectsSwooleRuntime
 {

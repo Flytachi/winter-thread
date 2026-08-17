@@ -17,6 +17,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  * used to hand it over (`proc_open` pipes/files vs. a shell background job), so
  * everything up to that point lives here. The using class must declare
  * `private ?string $secret`, `string $binaryPath` and `string $runnerPath`.
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#launcher-interface The two-method contract
  */
 trait LauncherSupport
 {

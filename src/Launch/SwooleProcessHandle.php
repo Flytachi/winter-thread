@@ -16,6 +16,8 @@ namespace Flytachi\Winter\Thread\Launch;
  *
  * @see SwooleLauncher
  * @see ProcessHandle
+ *
+ * @link https://winterframe.net/packages/thread/swoole-and-payload-delivery The PID-based handle and its limits
  */
 final class SwooleProcessHandle implements ProcessHandle
 {

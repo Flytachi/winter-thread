@@ -15,6 +15,8 @@ namespace Flytachi\Winter\Thread\Payload;
  * {@see PayloadTransport::cleanup()} for teardown.
  *
  * @see PayloadTransport
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#stagedpayload-final-readonly-class Staging result
  */
 final readonly class StagedPayload
 {

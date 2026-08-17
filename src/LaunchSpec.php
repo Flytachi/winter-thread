@@ -12,6 +12,8 @@ namespace Flytachi\Winter\Thread;
  * stable as options grow, and lets a worker pool build a spec once and reuse it.
  *
  * @see \Flytachi\Winter\Thread\Launch\Launcher
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#launchspec-final-readonly-class All launch parameters
  */
 final readonly class LaunchSpec
 {

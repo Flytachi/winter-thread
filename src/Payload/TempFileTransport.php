@@ -13,6 +13,8 @@ use Flytachi\Winter\Thread\ThreadException;
  *
  * Uses no pipe file descriptors, which makes it safe under Swoole
  * `SWOOLE_HOOK_ALL`. Requires no extension.
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#tempfiletransport Delivery through a 0600 temp file
  */
 final class TempFileTransport implements PayloadTransport
 {

@@ -19,6 +19,8 @@ use Opis\Closure\Security\DefaultSecurityProvider;
  *
  * @see CliLauncher
  * @see SwooleLauncher
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#adaptivelauncher-final-readonly-class Per-launch routing
  */
 final readonly class AdaptiveLauncher implements Launcher
 {

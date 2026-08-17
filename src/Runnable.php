@@ -17,6 +17,8 @@ namespace Flytachi\Winter\Thread;
  * initialized within the `run()` method itself.
  *
  * @see \Flytachi\Winter\Thread\Thread
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#runnable-interface The task contract
  */
 interface Runnable
 {

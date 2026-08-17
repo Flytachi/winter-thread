@@ -23,6 +23,8 @@ namespace Flytachi\Winter\Thread;
  * immediately before the call.
  *
  * @package Flytachi\Winter\Thread
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#signal-final-class POSIX helpers by raw PID, zombie-aware
  */
 final class Signal
 {

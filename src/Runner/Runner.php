@@ -16,6 +16,8 @@ namespace Flytachi\Winter\Thread\Runner;
  * Implement this interface to customize how the child bootstraps and runs a task.
  *
  * @see AdaptiveRunner
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#runner-interface The child-side contract
  */
 interface Runner
 {

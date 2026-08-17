@@ -14,6 +14,8 @@ use Flytachi\Winter\Thread\Payload\StagedPayload;
  *
  * @see ProcessHandle
  * @see CliLauncher
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#processhandle-interface The proc_open-backed handle
  */
 final class CliProcessHandle implements ProcessHandle
 {

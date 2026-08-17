@@ -46,6 +46,8 @@ use Flytachi\Winter\Thread\Launch\ProcessHandle;
  * @author Flytachi
  * @see \Flytachi\Winter\Thread\Runnable
  * @see \Flytachi\Winter\Thread\Launch\Launcher
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#thread-final-class Methods and returns
  */
 final class Thread
 {

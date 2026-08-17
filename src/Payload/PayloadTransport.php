@@ -26,6 +26,8 @@ namespace Flytachi\Winter\Thread\Payload;
  * @see PipeTransport
  * @see TempFileTransport
  * @see ShmTransport
+ *
+ * @link https://winterframe.net/packages/thread/api-reference#payloadtransport-interface The staging contract
  */
 interface PayloadTransport
 {
